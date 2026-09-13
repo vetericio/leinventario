@@ -843,44 +843,45 @@ function App() {
       </section>
 
       {/* Opção Instalar o App no final */}
-      <footer className="app-footer">
-        <div className="install-card">
-          <div className="install-info">
-            <div className="install-icon-wrapper">
-              <Smartphone size={24} className="install-icon" />
+      {!isInstalled && (
+        <footer className="app-footer">
+          <div className="install-card">
+            <div className="install-info">
+              <div className="install-icon-wrapper">
+                <Smartphone size={24} className="install-icon" />
+              </div>
+              <div>
+                <h3>Instalar o Leinventário</h3>
+                <p>Instale na tela inicial para usar offline, sem internet e com acesso rápido.</p>
+              </div>
             </div>
-            <div>
-              <h3>Instalar o Leinventário</h3>
-              <p>Instale na tela inicial para usar offline, sem internet e com acesso rápido.</p>
-            </div>
-          </div>
-          {isInstalled ? (
-            <div className="installed-badge">
-              <Check size={16} /> App Instalado
-            </div>
-          ) : (
             <button type="button" className="btn btn-install" onClick={handleInstallClick}>
               <Smartphone size={18} /> Instalar App
             </button>
-          )}
-        </div>
-
-        {showInstallHelp && !isInstalled && (
-          <div className="install-help-box">
-            <p style={{ margin: '0 0 0.5rem 0', fontWeight: 700, color: 'var(--text-h)' }}>
-              Como instalar manualmente:
-            </p>
-            <ul style={{ margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-              <li>
-                <strong>No Android / Chrome:</strong> Toque nos 3 pontos (⋮) no canto superior do navegador e selecione <strong>"Instalar aplicativo"</strong> ou <strong>"Adicionar à tela inicial"</strong>.
-              </li>
-              <li>
-                <strong>No iPhone / Safari:</strong> Toque no ícone de <strong>Compartilhar</strong> (<Share2 size={14} style={{ display: 'inline', verticalAlign: 'middle' }} />) e selecione <strong>"Adicionar à Tela de Início"</strong>.
-              </li>
-            </ul>
           </div>
-        )}
-      </footer>
+
+          {showInstallHelp && (
+            <div className="install-help-box">
+              <p style={{ margin: '0 0 0.5rem 0', fontWeight: 700, color: 'var(--text-h)' }}>
+                Como instalar manualmente:
+              </p>
+              <ul style={{ margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <li>
+                  <strong>No Android / Chrome:</strong> Toque nos 3 pontos (⋮) no canto superior do navegador e selecione <strong>"Instalar aplicativo"</strong> ou <strong>"Adicionar à tela inicial"</strong>.
+                </li>
+                <li>
+                  <strong>No iPhone / Safari:</strong> Toque no ícone de <strong>Compartilhar</strong> (<Share2 size={14} style={{ display: 'inline', verticalAlign: 'middle' }} />) e selecione <strong>"Adicionar à Tela de Início"</strong>.
+                </li>
+              </ul>
+            </div>
+          )}
+        </footer>
+      )}
+
+      <div className="footer-credits">
+        Feito por Veterício Tech - 31995512795
+      </div>
+
 
       {/* Modal Confirmar Limpeza */}
       {showClearModal && (
