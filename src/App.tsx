@@ -34,6 +34,8 @@ interface SplitRule {
   col1Length: number
   col2Length: number
   col3Length: number
+  ignoreStart?: number
+  ignoreEnd?: number
 }
 
 interface InventoryItem {
@@ -52,6 +54,14 @@ function parseCode(raw: string, rule: SplitRule) {
   if (rule.cleanSymbols) {
     cleaned = cleaned.replace(/[()<>\s]/g, '')
   }
+
+  const ignoreStart = Math.max(0, rule.ignoreStart || 0)
+  const ignoreEnd = Math.max(0, rule.ignoreEnd || 0)
+  if (ignoreStart || ignoreEnd) {
+    const end = cleaned.length - ignoreEnd
+    cleaned = end > ignoreStart ? cleaned.slice(ignoreStart, end) : ''
+  }
+
 
   if (rule.splitMode === '1') {
     return { rawCode: raw, colA: cleaned }
@@ -122,21 +132,25 @@ function App() {
   const [manualCode, setManualCode] = useState('')
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [copied, setCopied] = useState(false)
+  const [exporting, setExporting] = useState(false)
+
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [showConfig, setShowConfig] = useState(true)
 
   const [splitRule, setSplitRule] = useState<SplitRule>(() => {
     const saved = localStorage.getItem('leinventario_split_rule')
-    return saved
-      ? JSON.parse(saved)
-      : {
-          splitMode: '2',
-          cleanSymbols: true,
-          col1Length: 10,
-          col2Length: 8,
-          col3Length: 8,
-        }
+    const base = {
+      splitMode: '2' as const,
+      cleanSymbols: true,
+      col1Length: 10,
+      col2Length: 8,
+      col3Length: 8,
+      ignoreStart: 0,
+      ignoreEnd: 0,
+    }
+    return saved ? { ...base, ...JSON.parse(saved) } : base
   })
+
 
   const [items, setItems] = useState<InventoryItem[]>(() => {
     const saved = localStorage.getItem('leinventario_items')
@@ -389,38 +403,102 @@ function App() {
     setClearConfirmInput('')
   }
 
-  const exportCSV = () => {
+  const exportXLSX = async () => {
     if (items.length === 0) return
+    setExporting(true)
+    try {
+      const ExcelJS = (await import('exceljs/dist/exceljs.min.js')).default
+      const now = new Date()
+      const exportDateStr = `${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR')}`
 
-    const now = new Date()
-    const exportDateStr = `${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR')}`
+      const wb = new ExcelJS.Workbook()
+      wb.creator = 'Leinventário'
+      const ws = wb.addWorksheet('Inventário')
 
-    let csvText = '\uFEFF' // UTF-8 BOM for Microsoft Excel compatibility
-    csvText += 'Leinventário\n'
-    csvText += `Data e hora da exportação: ${exportDateStr}\n\n`
-    csvText += 'Data da leitura;Quantidade;Código Completo;Coluna A;Coluna B;Coluna C\n'
+      ws.columns = [
+        { key: 'date', width: 22 },
+        { key: 'qty', width: 12 },
+        { key: 'raw', width: 30 },
+        { key: 'a', width: 18 },
+        { key: 'b', width: 18 },
+        { key: 'c', width: 18 },
+      ]
 
-    items.forEach((item) => {
-      const raw = `"${(item.rawCode || '').replace(/"/g, '""')}"`
-      const colA = `"${(item.colA || '').replace(/"/g, '""')}"`
-      const colB = `"${(item.colB || '').replace(/"/g, '""')}"`
-      const colC = `"${(item.colC || '').replace(/"/g, '""')}"`
-      const dateRead = `"${item.dateRead || `${new Date().toLocaleDateString('pt-BR')} ${item.timestamp}`}"`
-      const qty = item.quantity
+      // Logo no topo
+      try {
+        const res = await fetch('./icon-192.png')
+        const buf = await res.arrayBuffer()
+        const imgId = wb.addImage({ buffer: buf, extension: 'png' })
+        ws.addImage(imgId, { tl: { col: 0, row: 0 }, ext: { width: 90, height: 90 } })
+      } catch {
+        // segue sem logo se a imagem não carregar
+      }
+      ws.getRow(1).height = 70
 
-      csvText += `${dateRead};${qty};${raw};${colA};${colB};${colC}\n`
-    })
+      ws.mergeCells('B1:F1')
+      const title = ws.getCell('B1')
+      title.value = 'Leinventário'
+      title.font = { name: 'Arial', size: 18, bold: true, color: { argb: 'FF00A344' } }
+      title.alignment = { vertical: 'middle' }
 
-    const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.setAttribute('download', `leinventario_${now.toISOString().slice(0, 10)}.csv`)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
+      ws.mergeCells('B2:F2')
+      const sub = ws.getCell('B2')
+      sub.value = `Data e hora da exportação: ${exportDateStr}`
+      sub.font = { name: 'Arial', size: 10, color: { argb: 'FF555555' } }
+
+      const headerRow = ws.addRow([
+        'Data da leitura',
+        'Quantidade',
+        'Código Completo',
+        'Coluna A',
+        'Coluna B',
+        'Coluna C',
+      ])
+      headerRow.eachCell((cell) => {
+        cell.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FFFFFFFF' } }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF00A344' } }
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        cell.border = { bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } } }
+      })
+
+      items.forEach((item) => {
+        const row = ws.addRow([
+          item.dateRead || `${now.toLocaleDateString('pt-BR')} ${item.timestamp}`,
+          item.quantity,
+          item.rawCode || '',
+          item.colA || '',
+          item.colB || '',
+          item.colC || '',
+        ])
+        row.eachCell((cell) => {
+          cell.font = { name: 'Arial', size: 11 }
+          cell.border = { bottom: { style: 'hair', color: { argb: 'FFE5E5E5' } } }
+        })
+        row.getCell(2).alignment = { horizontal: 'center' }
+      })
+
+      ws.views = [{ state: 'frozen', ySplit: headerRow.number }]
+
+      const out = await wb.xlsx.writeBuffer()
+      const blob = new Blob([out], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `leinventario_${now.toISOString().slice(0, 10)}.xlsx`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error(err)
+      alert('Não foi possível gerar o arquivo Excel.')
+    } finally {
+      setExporting(false)
+    }
   }
+
 
   const copyTable = () => {
     if (items.length === 0) return
@@ -647,7 +725,43 @@ function App() {
               </div>
             )}
 
+            <div className="config-inputs-grid">
+              <div className="config-input-item">
+                <label>Ignorar caracteres do início:</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="50"
+                  value={splitRule.ignoreStart ?? 0}
+                  onChange={(e) =>
+                    setSplitRule((r) => ({
+                      ...r,
+                      ignoreStart: Math.max(0, parseInt(e.target.value) || 0),
+                    }))
+                  }
+                />
+                <span className="input-help">0 = não ignora nada</span>
+              </div>
+              <div className="config-input-item">
+                <label>Ignorar caracteres do fim:</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="50"
+                  value={splitRule.ignoreEnd ?? 0}
+                  onChange={(e) =>
+                    setSplitRule((r) => ({
+                      ...r,
+                      ignoreEnd: Math.max(0, parseInt(e.target.value) || 0),
+                    }))
+                  }
+                />
+                <span className="input-help">0 = não ignora nada</span>
+              </div>
+            </div>
+
             <div className="config-checkbox">
+
               <label>
                 <input
                   type="checkbox"
@@ -764,8 +878,9 @@ function App() {
                 {copied ? <Check size={16} /> : <Copy size={16} />}
                 {copied ? 'Copiado!' : 'Copiar'}
               </button>
-              <button className="btn btn-primary" onClick={exportCSV} title="Baixar CSV">
-                <Download size={16} /> Exportar CSV
+              <button className="btn btn-primary" onClick={exportXLSX} disabled={exporting} title="Baixar Excel">
+                <Download size={16} /> {exporting ? 'Gerando...' : 'Exportar Excel'}
+
               </button>
               <button className="btn btn-danger" onClick={clearAll} title="Limpar tudo">
                 <RotateCcw size={16} /> Limpar
