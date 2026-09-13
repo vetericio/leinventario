@@ -34,6 +34,8 @@ interface SplitRule {
   col1Length: number
   col2Length: number
   col3Length: number
+  ignoreStart?: number
+  ignoreEnd?: number
 }
 
 interface InventoryItem {
@@ -52,6 +54,14 @@ function parseCode(raw: string, rule: SplitRule) {
   if (rule.cleanSymbols) {
     cleaned = cleaned.replace(/[()<>\s]/g, '')
   }
+
+  const ignoreStart = Math.max(0, rule.ignoreStart || 0)
+  const ignoreEnd = Math.max(0, rule.ignoreEnd || 0)
+  if (ignoreStart || ignoreEnd) {
+    const end = cleaned.length - ignoreEnd
+    cleaned = end > ignoreStart ? cleaned.slice(ignoreStart, end) : ''
+  }
+
 
   if (rule.splitMode === '1') {
     return { rawCode: raw, colA: cleaned }
