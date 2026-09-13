@@ -186,23 +186,55 @@
 
 .manual-form {
   display: flex;
-  gap: 0.75rem;
+  flex-direction: column;
+  gap: 1rem;
   padding: 0.5rem;
 }
 
 .manual-input {
-  flex: 1;
-  padding: 0.75rem 1rem;
+  width: 100%;
+  padding: 0.85rem 1rem;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text-h);
   font-size: 1rem;
   outline: none;
+  box-sizing: border-box;
 }
 
 .manual-input:focus {
   border-color: var(--accent);
+}
+
+.btn-add-manual {
+  width: 100%;
+  justify-content: center;
+  padding: 0.85rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.camera-error-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-top: 0.5rem;
+  text-align: center;
+}
+
+.camera-error-box p {
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+[id*="lovable"], [class*="lovable"], #lovable-badge {
+  display: none !important;
 }
 
 .hidden-input {

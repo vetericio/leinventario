@@ -34,6 +34,19 @@ html, body {
   margin: 0;
 }
 
+#root {
+  width: 100%;
+  max-width: 1126px;
+  margin: 0 auto;
+  text-align: center;
+  border-inline: none;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  background-color: #ffffff;
+}
+
 h1,
 h2 {
   font-family: var(--heading);

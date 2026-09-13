@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Html5Qrcode, Html5QrcodeScanner, Html5QrcodeSupportedFormats } from 'html5-qrcode'
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import {
   Barcode,
   Camera,
@@ -47,6 +47,7 @@ function App() {
   const [manualCode, setManualCode] = useState('')
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [copied, setCopied] = useState(false)
+  const [cameraError, setCameraError] = useState<string | null>(null)
   const [items, setItems] = useState<InventoryItem[]>(() => {
     const saved = localStorage.getItem('leinventario_items')
     return saved ? JSON.parse(saved) : []
@@ -54,7 +55,7 @@ function App() {
   const [lastScanned, setLastScanned] = useState<string | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null)
+  const html5QrcodeRef = useRef<Html5Qrcode | null>(null)
   const lastScanTimeRef = useRef<number>(0)
 
   useEffect(() => {
@@ -103,12 +104,24 @@ function App() {
     })
   }
 
-  useEffect(() => {
-    if (mode === 'camera') {
+  const startCamera = async () => {
+    setCameraError(null)
+
+    try {
+      if (html5QrcodeRef.current) {
+        try {
+          await html5QrcodeRef.current.stop()
+        } catch {
+          // ignore stop error
+        }
+      }
+
+      const qrCode = new Html5Qrcode('barcode-scanner')
+      html5QrcodeRef.current = qrCode
+
       const config = {
-        fps: 15,
-        qrbox: { width: 280, height: 180 },
-        aspectRatio: 1.33,
+        fps: 10,
+        qrbox: { width: 280, height: 160 },
         formatsToSupport: [
           Html5QrcodeSupportedFormats.EAN_13,
           Html5QrcodeSupportedFormats.EAN_8,
@@ -120,25 +133,52 @@ function App() {
         ],
       }
 
-      scannerRef.current = new Html5QrcodeScanner('barcode-scanner', config, false)
-      scannerRef.current.render(
-        (decodedText) => {
-          handleBarcodeRead(decodedText)
-        },
-        () => {
-          // ignore frame read errors
-        }
+      try {
+        await qrCode.start(
+          { facingMode: 'environment' },
+          config,
+          (decodedText) => handleBarcodeRead(decodedText),
+          () => {}
+        )
+      } catch {
+        // Fallback to default/user facing camera
+        await qrCode.start(
+          { facingMode: 'user' },
+          config,
+          (decodedText) => handleBarcodeRead(decodedText),
+          () => {}
+        )
+      }
+    } catch (err: unknown) {
+      console.error('Camera access error:', err)
+      setCameraError(
+        'Não foi possível acessar a câmera. Clique no botão abaixo para permitir o acesso ou tente em outro navegador.'
       )
-    } else {
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(console.error)
-      }
     }
+  }
 
-    return () => {
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(console.error)
+  const stopCamera = async () => {
+    if (html5QrcodeRef.current) {
+      try {
+        await html5QrcodeRef.current.stop()
+      } catch {
+        // ignore
       }
+      html5QrcodeRef.current = null
+    }
+  }
+
+  useEffect(() => {
+    if (mode === 'camera') {
+      const timer = setTimeout(() => {
+        startCamera()
+      }, 100)
+      return () => {
+        clearTimeout(timer)
+        stopCamera()
+      }
+    } else {
+      stopCamera()
     }
   }, [mode])
 
@@ -283,7 +323,19 @@ function App() {
 
       {/* Reader / Input Box */}
       <div className="scanner-card">
-        {mode === 'camera' && <div id="barcode-scanner"></div>}
+        {mode === 'camera' && (
+          <div>
+            <div id="barcode-scanner"></div>
+            {cameraError && (
+              <div className="camera-error-box">
+                <p>{cameraError}</p>
+                <button className="btn btn-primary" onClick={startCamera}>
+                  <Camera size={18} /> Ligar Câmera
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {mode === 'file' && (
           <div>
@@ -313,12 +365,12 @@ function App() {
             <input
               type="text"
               className="manual-input"
-              placeholder="Digite ou cole o código de barras..."
+              placeholder="Digite o código de barras..."
               value={manualCode}
               onChange={(e) => setManualCode(e.target.value)}
               autoFocus
             />
-            <button type="submit" className="btn btn-primary">
+            <button type="submit" className="btn btn-primary btn-add-manual">
               <Plus size={18} /> Adicionar
             </button>
           </form>
