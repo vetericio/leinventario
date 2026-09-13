@@ -459,14 +459,14 @@ function App() {
         <div className="stat-card">
           <Layers className="stat-icon" />
           <div>
-            <div className="stat-value">{totalCodes}</div>
+            <div className="stat-value">{totalCodes.toLocaleString('pt-BR')}</div>
             <div className="stat-label">Códigos Únicos</div>
           </div>
         </div>
         <div className="stat-card accent">
           <Package className="stat-icon" />
           <div>
-            <div className="stat-value">{totalQuantity}</div>
+            <div className="stat-value">{totalQuantity.toLocaleString('pt-BR')}</div>
             <div className="stat-label">Quantidade Total</div>
           </div>
         </div>
