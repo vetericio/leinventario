@@ -132,6 +132,8 @@ function App() {
   const [manualCode, setManualCode] = useState('')
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [copied, setCopied] = useState(false)
+  const [exporting, setExporting] = useState(false)
+
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [showConfig, setShowConfig] = useState(true)
 
@@ -840,8 +842,9 @@ function App() {
                 {copied ? <Check size={16} /> : <Copy size={16} />}
                 {copied ? 'Copiado!' : 'Copiar'}
               </button>
-              <button className="btn btn-primary" onClick={exportCSV} title="Baixar CSV">
-                <Download size={16} /> Exportar CSV
+              <button className="btn btn-primary" onClick={exportXLSX} disabled={exporting} title="Baixar Excel">
+                <Download size={16} /> {exporting ? 'Gerando...' : 'Exportar Excel'}
+
               </button>
               <button className="btn btn-danger" onClick={clearAll} title="Limpar tudo">
                 <RotateCcw size={16} /> Limpar
