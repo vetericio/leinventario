@@ -18,8 +18,15 @@ import {
   SlidersHorizontal,
   ChevronDown,
   ChevronUp,
+  Smartphone,
+  Share2,
 } from 'lucide-react'
 import './App.css'
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
+}
 
 interface SplitRule {
   splitMode: '1' | '2' | '3'
@@ -151,9 +158,50 @@ function App() {
   const [showClearModal, setShowClearModal] = useState(false)
   const [clearConfirmInput, setClearConfirmInput] = useState('')
 
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
+  const [isInstalled, setIsInstalled] = useState(false)
+  const [showInstallHelp, setShowInstallHelp] = useState(false)
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const html5QrcodeRef = useRef<Html5Qrcode | null>(null)
   const lastScanTimeRef = useRef<number>(0)
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault()
+      setDeferredPrompt(e as BeforeInstallPromptEvent)
+    }
+
+    const handleAppInstalled = () => {
+      setIsInstalled(true)
+      setDeferredPrompt(null)
+    }
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+    window.addEventListener('appinstalled', handleAppInstalled)
+
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstalled(true)
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+      window.removeEventListener('appinstalled', handleAppInstalled)
+    }
+  }, [])
+
+  const handleInstallClick = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt()
+      const { outcome } = await deferredPrompt.userChoice
+      if (outcome === 'accepted') {
+        setIsInstalled(true)
+      }
+      setDeferredPrompt(null)
+    } else {
+      setShowInstallHelp((prev) => !prev)
+    }
+  }
 
   useEffect(() => {
     localStorage.setItem('leinventario_items', JSON.stringify(items))
@@ -793,6 +841,46 @@ function App() {
           </div>
         )}
       </section>
+
+      {/* Opção Instalar o App no final */}
+      <footer className="app-footer">
+        <div className="install-card">
+          <div className="install-info">
+            <div className="install-icon-wrapper">
+              <Smartphone size={24} className="install-icon" />
+            </div>
+            <div>
+              <h3>Instalar o Leinventário</h3>
+              <p>Instale na tela inicial para usar offline, sem internet e com acesso rápido.</p>
+            </div>
+          </div>
+          {isInstalled ? (
+            <div className="installed-badge">
+              <Check size={16} /> App Instalado
+            </div>
+          ) : (
+            <button type="button" className="btn btn-install" onClick={handleInstallClick}>
+              <Smartphone size={18} /> Instalar App
+            </button>
+          )}
+        </div>
+
+        {showInstallHelp && !isInstalled && (
+          <div className="install-help-box">
+            <p style={{ margin: '0 0 0.5rem 0', fontWeight: 700, color: 'var(--text-h)' }}>
+              Como instalar manualmente:
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              <li>
+                <strong>No Android / Chrome:</strong> Toque nos 3 pontos (⋮) no canto superior do navegador e selecione <strong>"Instalar aplicativo"</strong> ou <strong>"Adicionar à tela inicial"</strong>.
+              </li>
+              <li>
+                <strong>No iPhone / Safari:</strong> Toque no ícone de <strong>Compartilhar</strong> (<Share2 size={14} style={{ display: 'inline', verticalAlign: 'middle' }} />) e selecione <strong>"Adicionar à Tela de Início"</strong>.
+              </li>
+            </ul>
+          </div>
+        )}
+      </footer>
 
       {/* Modal Confirmar Limpeza */}
       {showClearModal && (

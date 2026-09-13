@@ -1,0 +1,17 @@
+{
+  "name": "Leinventário",
+  "short_name": "Leinventário",
+  "description": "Leitor de código de barras e planilha de inventário",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#00c853",
+  "icons": [
+    {
+      "src": "./logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
