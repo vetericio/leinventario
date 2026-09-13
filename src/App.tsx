@@ -137,16 +137,18 @@ function App() {
 
   const [splitRule, setSplitRule] = useState<SplitRule>(() => {
     const saved = localStorage.getItem('leinventario_split_rule')
-    return saved
-      ? JSON.parse(saved)
-      : {
-          splitMode: '2',
-          cleanSymbols: true,
-          col1Length: 10,
-          col2Length: 8,
-          col3Length: 8,
-        }
+    const base = {
+      splitMode: '2' as const,
+      cleanSymbols: true,
+      col1Length: 10,
+      col2Length: 8,
+      col3Length: 8,
+      ignoreStart: 0,
+      ignoreEnd: 0,
+    }
+    return saved ? { ...base, ...JSON.parse(saved) } : base
   })
+
 
   const [items, setItems] = useState<InventoryItem[]>(() => {
     const saved = localStorage.getItem('leinventario_items')
