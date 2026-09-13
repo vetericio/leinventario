@@ -725,7 +725,43 @@ function App() {
               </div>
             )}
 
+            <div className="config-inputs-grid">
+              <div className="config-input-item">
+                <label>Ignorar caracteres do início:</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="50"
+                  value={splitRule.ignoreStart ?? 0}
+                  onChange={(e) =>
+                    setSplitRule((r) => ({
+                      ...r,
+                      ignoreStart: Math.max(0, parseInt(e.target.value) || 0),
+                    }))
+                  }
+                />
+                <span className="input-help">0 = não ignora nada</span>
+              </div>
+              <div className="config-input-item">
+                <label>Ignorar caracteres do fim:</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="50"
+                  value={splitRule.ignoreEnd ?? 0}
+                  onChange={(e) =>
+                    setSplitRule((r) => ({
+                      ...r,
+                      ignoreEnd: Math.max(0, parseInt(e.target.value) || 0),
+                    }))
+                  }
+                />
+                <span className="input-help">0 = não ignora nada</span>
+              </div>
+            </div>
+
             <div className="config-checkbox">
+
               <label>
                 <input
                   type="checkbox"
