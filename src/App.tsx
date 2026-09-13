@@ -426,7 +426,7 @@ function App() {
 
       // Logo no topo
       try {
-        const res = await fetch('./logo.png')
+        const res = await fetch('./icon-192.png')
         const buf = await res.arrayBuffer()
         const imgId = wb.addImage({ buffer: buf, extension: 'png' })
         ws.addImage(imgId, { tl: { col: 0, row: 0 }, ext: { width: 90, height: 90 } })
