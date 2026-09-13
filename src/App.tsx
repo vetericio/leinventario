@@ -148,6 +148,8 @@ function App() {
   })
 
   const [lastScanned, setLastScanned] = useState<string | null>(null)
+  const [showClearModal, setShowClearModal] = useState(false)
+  const [clearConfirmInput, setClearConfirmInput] = useState('')
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const html5QrcodeRef = useRef<Html5Qrcode | null>(null)
@@ -335,11 +337,8 @@ function App() {
   }
 
   const clearAll = () => {
-    if (confirm('Deseja realmente limpar toda a planilha de inventário?')) {
-      setItems([])
-      setLastScanned(null)
-      localStorage.removeItem('leinventario_items')
-    }
+    setShowClearModal(true)
+    setClearConfirmInput('')
   }
 
   const exportCSV = () => {
@@ -794,6 +793,59 @@ function App() {
           </div>
         )}
       </section>
+
+      {/* Modal Confirmar Limpeza */}
+      {showClearModal && (
+        <div className="modal-overlay">
+          <div className="modal-card">
+            <h3>
+              <Trash2 size={22} color="#dc2626" /> Apagar Planilha
+            </h3>
+            <p style={{ margin: 0, color: 'var(--text-h)', fontWeight: 500 }}>
+              Esta ação irá <strong>apagar permanentemente</strong> todos os itens registrados.
+            </p>
+            <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text)' }}>
+              Para confirmar e evitar perda acidental de dados, digite <strong>APAGAR</strong> no campo abaixo:
+            </p>
+            <input
+              type="text"
+              className="modal-input"
+              placeholder="Digite APAGAR"
+              value={clearConfirmInput}
+              onChange={(e) => setClearConfirmInput(e.target.value)}
+              autoFocus
+            />
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  setShowClearModal(false)
+                  setClearConfirmInput('')
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                disabled={clearConfirmInput.trim().toUpperCase() !== 'APAGAR'}
+                onClick={() => {
+                  if (clearConfirmInput.trim().toUpperCase() === 'APAGAR') {
+                    setItems([])
+                    setLastScanned(null)
+                    localStorage.removeItem('leinventario_items')
+                    setShowClearModal(false)
+                    setClearConfirmInput('')
+                  }
+                }}
+              >
+                Apagar Planilha
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
