@@ -845,10 +845,6 @@
 }
 
 @media (max-width: 640px) {
-  .stats-bar {
-    grid-template-columns: 1fr;
-  }
-
   .controls-bar {
     flex-direction: column;
     align-items: stretch;
@@ -858,4 +854,14 @@
     justify-content: center;
   }
 }
+
+.footer-credits {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
 
