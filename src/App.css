@@ -15,11 +15,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 1rem;
+  gap: 1.25rem;
 }
 
-.header-icon {
-  color: var(--accent);
+.app-logo {
+  height: 72px;
+  width: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.2));
 }
 
 .header h1 {

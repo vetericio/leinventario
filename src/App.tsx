@@ -223,7 +223,7 @@ function App() {
     <div className="app-container">
       <header className="header">
         <div className="logo-container">
-          <Barcode size={42} className="header-icon" />
+          <img src="./logo.png" alt="Leinventário Logo" className="app-logo" />
           <div>
             <h1>Leinventário</h1>
             <p>Leitor de Códigos de Barras e Gerenciador de Inventário</p>
