@@ -733,9 +733,10 @@ function App() {
       {/* Planilha / Tabela Numerada */}
       <section className="inventory-section">
         <div className="inventory-header">
-          <h2>
-            <FileSpreadsheet size={22} /> Planilha do Inventário
-          </h2>
+          <div>
+            <h2><FileSpreadsheet size={22} /> Inventário registrado</h2>
+            <p className="inventory-subtitle">Confira os dados abaixo antes de exportar para o Excel.</p>
+          </div>
           {items.length > 0 && (
             <div className="inventory-actions">
               <button className="btn" onClick={copyTable} title="Copiar lista">
@@ -772,15 +773,20 @@ function App() {
             <span>Aponta a câmera para os códigos de barras para preencher a planilha.</span>
           </div>
         ) : (
-          <div className="table-responsive">
-            <table className="inventory-table">
+          <>
+            <div className="inventory-summary">
+              <div><span>Total de registros</span><strong>{items.length}</strong></div>
+              <div><span>Itens contabilizados</span><strong>{items.reduce((sum, item) => sum + item.quantity, 0)}</strong></div>
+              <div><span>Último lote</span><strong>{items[0]?.lote || '-'}</strong></div>
+            </div>
+            <div className="table-responsive">
+              <table className="inventory-table">
               <thead>
                 <tr>
                   <th style={{ width: '50px' }}>#</th>
-                  <th>Código Lido</th>
-                  <th>Coluna A</th>
-                  {splitRule.splitMode !== '1' && <th>Coluna B</th>}
-                  {splitRule.splitMode === '3' && <th>Coluna C</th>}
+                  <th>Área</th>
+                  <th>Código do material</th>
+                  <th>Lote</th>
                   <th style={{ width: '120px', textAlign: 'center' }}>Quantidade</th>
                   <th style={{ width: '100px' }}>Hora</th>
                   <th style={{ width: '60px', textAlign: 'center' }}>Ação</th>
@@ -790,14 +796,9 @@ function App() {
                 {items.map((item, index) => (
                   <tr key={item.id}>
                     <td className="row-num">{index + 1}</td>
-                    <td className="code-cell raw">{item.rawCode}</td>
-                    <td className="code-cell col-cell">{item.colA || '-'}</td>
-                    {splitRule.splitMode !== '1' && (
-                      <td className="code-cell col-cell">{item.colB || '-'}</td>
-                    )}
-                    {splitRule.splitMode === '3' && (
-                      <td className="code-cell col-cell">{item.colC || '-'}</td>
-                    )}
+                    <td><span className="data-badge area-badge">{item.area || '-'}</span></td>
+                    <td className="code-cell material-cell">{item.colA || item.rawCode || '-'}</td>
+                    <td><span className="data-badge lot-badge">{item.lote || '-'}</span></td>
                     <td>
                       <div className="qty-controls">
                         <button
@@ -829,7 +830,8 @@ function App() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </section>
 
