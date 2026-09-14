@@ -544,6 +544,26 @@ function App() {
   const totalCodes = items.length
   const totalQuantity = items.reduce((acc, item) => acc + item.quantity, 0)
 
+  const cfg = draftRule ?? splitRule
+  const previewSample = lastScanned || EXAMPLE_CODE
+  const previewParsed = parseCode(previewSample, cfg)
+
+  const openConfig = () => {
+    setDraftRule({ ...splitRule })
+    setConfigOpen(true)
+  }
+
+  const updateDraft = (patch: Partial<SplitRule>) => {
+    setDraftRule((r) => ({ ...(r ?? splitRule), ...patch }))
+  }
+
+  const saveConfig = () => {
+    if (draftRule) setSplitRule(draftRule)
+    setConfigOpen(false)
+    setConfigSaved(true)
+    setTimeout(() => setConfigSaved(false), 2500)
+  }
+
   return (
     <div className="app-container">
       <header className="header">
@@ -710,6 +730,18 @@ function App() {
             </div>
           )}
         </div>
+
+        {exportUrl && (
+          <div className="export-note">
+            Planilha gerada. Se o download não começou,{' '}
+            <a href={exportUrl} download={exportFileName}>
+              toque aqui para baixar
+            </a>
+            .
+          </div>
+        )}
+
+        {exportError && <div className="export-note error">{exportError}</div>
 
         {items.length === 0 ? (
           <div className="empty-state">
