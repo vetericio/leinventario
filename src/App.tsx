@@ -445,11 +445,18 @@ function App() {
       wb.creator = 'Leinventário'
       const ws = wb.addWorksheet('Inventário')
 
-      ws.columns = [
-        { key: 'area', width: 14 },
-        { key: 'material', width: 22 },
-        { key: 'lote', width: 14 },
+      const hasDivisionB = splitRule.splitMode !== '1'
+      const hasDivisionC = splitRule.splitMode === '3'
+      const exportColumns = [
+        { key: 'number', width: 10 },
+        { key: 'complete', width: 28 },
+        { key: 'divisionA', width: 22 },
+        ...(hasDivisionB ? [{ key: 'divisionB', width: 22 }] : []),
+        ...(hasDivisionC ? [{ key: 'divisionC', width: 22 }] : []),
+        { key: 'lote', width: 16 },
+        { key: 'area', width: 12 },
       ]
+      ws.columns = exportColumns
 
       // Logo no topo
       try {
@@ -462,19 +469,23 @@ function App() {
       }
       ws.getRow(1).height = 70
 
-      ws.mergeCells('B1:C1')
+      const lastColumn = String.fromCharCode(65 + exportColumns.length - 1)
+      ws.mergeCells(`B1:${lastColumn}1`)
       const title = ws.getCell('B1')
       title.value = 'Leinventário'
       title.font = { name: 'Arial', size: 18, bold: true, color: { argb: 'FF00A344' } }
       title.alignment = { vertical: 'middle' }
 
-      ws.mergeCells('B2:C2')
+      ws.mergeCells(`B2:${lastColumn}2`)
       const sub = ws.getCell('B2')
       sub.value = `Data e hora da exportação: ${exportDateStr}`
       sub.font = { name: 'Arial', size: 10, color: { argb: 'FF555555' } }
 
       const headerRow = ws.addRow([
-        'Área', 'Código Material', 'Lote',
+        'Número', 'Número completo', 'Divisão A',
+        ...(hasDivisionB ? ['Divisão B'] : []),
+        ...(hasDivisionC ? ['Divisão C'] : []),
+        'Lote', 'Área',
       ])
       headerRow.eachCell((cell) => {
         cell.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FFFFFFFF' } }
@@ -483,15 +494,20 @@ function App() {
         cell.border = { bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } } }
       })
 
-      items.forEach((item) => {
+      items.forEach((item, index) => {
         const row = ws.addRow([
-          item.area, item.colA || item.rawCode || '', item.lote,
+          index + 1,
+          item.rawCode || '',
+          item.colA || '',
+          ...(hasDivisionB ? [item.colB || ''] : []),
+          ...(hasDivisionC ? [item.colC || ''] : []),
+          item.lote || '', item.area || '',
         ])
         row.eachCell((cell) => {
           cell.font = { name: 'Arial', size: 11 }
           cell.border = { bottom: { style: 'hair', color: { argb: 'FFE5E5E5' } } }
         })
-        row.getCell(2).alignment = { horizontal: 'center' }
+        row.getCell(1).alignment = { horizontal: 'center' }
       })
 
       ws.views = [{ state: 'frozen', ySplit: headerRow.number }]
@@ -542,7 +558,7 @@ function App() {
         let cols = `${idx + 1}.\t${item.rawCode}\t${item.colA}`
         if (item.colB) cols += `\t${item.colB}`
         if (item.colC) cols += `\t${item.colC}`
-        cols += `\tQtd: ${item.quantity}\t(${item.timestamp})`
+        cols += `\t${item.lote}\t${item.area}\tQtd: ${item.quantity}\t(${item.timestamp})`
         return cols
       })
       .join('\n')
@@ -579,7 +595,7 @@ function App() {
     <div className="app-container">
       <header className="header">
         <div className="logo-container">
-          <img src="./logo.png" alt="Leinventário Logo" className="app-logo" />
+          <img src="./icon-512.png?v=2" alt="Leinventário Logo" className="app-logo" />
           <div>
             <h1>Leinventário</h1>
             <p>Leitor de Códigos de Barras e Gerenciador de Inventário</p>
@@ -783,10 +799,13 @@ function App() {
               <table className="inventory-table">
               <thead>
                 <tr>
-                  <th style={{ width: '50px' }}>#</th>
-                  <th>Área</th>
-                  <th>Código do material</th>
+                  <th style={{ width: '70px' }}>Número</th>
+                  <th>Número completo</th>
+                  <th>Divisão A</th>
+                  {splitRule.splitMode !== '1' && <th>Divisão B</th>}
+                  {splitRule.splitMode === '3' && <th>Divisão C</th>}
                   <th>Lote</th>
+                  <th>Área</th>
                   <th style={{ width: '120px', textAlign: 'center' }}>Quantidade</th>
                   <th style={{ width: '100px' }}>Hora</th>
                   <th style={{ width: '60px', textAlign: 'center' }}>Ação</th>
@@ -796,9 +815,12 @@ function App() {
                 {items.map((item, index) => (
                   <tr key={item.id}>
                     <td className="row-num">{index + 1}</td>
-                    <td><span className="data-badge area-badge">{item.area || '-'}</span></td>
-                    <td className="code-cell material-cell">{item.colA || item.rawCode || '-'}</td>
+                    <td className="code-cell material-cell">{item.rawCode || '-'}</td>
+                    <td className="code-cell col-cell">{item.colA || '-'}</td>
+                    {splitRule.splitMode !== '1' && <td className="code-cell col-cell">{item.colB || '-'}</td>}
+                    {splitRule.splitMode === '3' && <td className="code-cell col-cell">{item.colC || '-'}</td>}
                     <td><span className="data-badge lot-badge">{item.lote || '-'}</span></td>
+                    <td><span className="data-badge area-badge">{item.area || '-'}</span></td>
                     <td>
                       <div className="qty-controls">
                         <button
