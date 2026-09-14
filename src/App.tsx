@@ -49,6 +49,8 @@ interface InventoryItem {
   quantity: number
   timestamp: string
   dateRead?: string
+  lote: string
+  area: string
 }
 
 function parseCode(raw: string, rule: SplitRule) {
@@ -171,12 +173,17 @@ function App() {
       colA: item.colA || item.code || '',
       colB: item.colB,
       colC: item.colC,
+      lote: (item as { lote?: string }).lote || '',
+      area: (item as { area?: string }).area || '',
       quantity: item.quantity || 1,
       timestamp: item.timestamp || '',
     }))
   })
 
   const [lastScanned, setLastScanned] = useState<string | null>(null)
+  const [pendingScan, setPendingScan] = useState<{ code: string; parsed: ReturnType<typeof parseCode> } | null>(null)
+  const [lote, setLote] = useState('')
+  const [area, setArea] = useState('')
   const [showClearModal, setShowClearModal] = useState(false)
   const [clearConfirmInput, setClearConfirmInput] = useState('')
 
@@ -244,14 +251,22 @@ function App() {
       playBeep()
     }
 
-    const parsed = parseCode(code, splitRule)
     setLastScanned(code)
+    setPendingScan({ code, parsed: parseCode(code, splitRule) })
+    setLote('')
+    setArea('')
+  }
+
+  const saveScannedItem = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!pendingScan || !lote.trim() || !area.trim()) return
+    const { parsed } = pendingScan
 
     setItems((prev) => {
       const existingIndex = prev.findIndex(
         (item) =>
           item.rawCode === parsed.rawCode ||
-          (item.colA === parsed.colA &&
+          (item.colA === parsed.colA && item.lote === lote.trim() && item.area === area.trim() &&
             (item.colB || '') === (parsed.colB || '') &&
             (item.colC || '') === (parsed.colC || ''))
       )
@@ -271,6 +286,8 @@ function App() {
           quantity: updated[existingIndex].quantity + 1,
           timestamp: timeStr,
           dateRead: fullDateTime,
+          lote: lote.trim(),
+          area: area.trim(),
         }
         return updated
       } else {
@@ -283,10 +300,15 @@ function App() {
           quantity: 1,
           timestamp: timeStr,
           dateRead: fullDateTime,
+          lote: lote.trim(),
+          area: area.trim(),
         }
         return [newItem, ...prev]
       }
     })
+    setPendingScan(null)
+    setLote('')
+    setArea('')
   }
 
   const startCamera = async () => {
@@ -424,12 +446,9 @@ function App() {
       const ws = wb.addWorksheet('Inventário')
 
       ws.columns = [
-        { key: 'date', width: 22 },
-        { key: 'qty', width: 12 },
-        { key: 'raw', width: 30 },
-        { key: 'a', width: 18 },
-        { key: 'b', width: 18 },
-        { key: 'c', width: 18 },
+        { key: 'area', width: 14 },
+        { key: 'material', width: 22 },
+        { key: 'lote', width: 14 },
       ]
 
       // Logo no topo
@@ -443,24 +462,19 @@ function App() {
       }
       ws.getRow(1).height = 70
 
-      ws.mergeCells('B1:F1')
+      ws.mergeCells('B1:C1')
       const title = ws.getCell('B1')
       title.value = 'Leinventário'
       title.font = { name: 'Arial', size: 18, bold: true, color: { argb: 'FF00A344' } }
       title.alignment = { vertical: 'middle' }
 
-      ws.mergeCells('B2:F2')
+      ws.mergeCells('B2:C2')
       const sub = ws.getCell('B2')
       sub.value = `Data e hora da exportação: ${exportDateStr}`
       sub.font = { name: 'Arial', size: 10, color: { argb: 'FF555555' } }
 
       const headerRow = ws.addRow([
-        'Data da leitura',
-        'Quantidade',
-        'Código Completo',
-        'Coluna A',
-        'Coluna B',
-        'Coluna C',
+        'Área', 'Código Material', 'Lote',
       ])
       headerRow.eachCell((cell) => {
         cell.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FFFFFFFF' } }
@@ -471,12 +485,7 @@ function App() {
 
       items.forEach((item) => {
         const row = ws.addRow([
-          item.dateRead || `${now.toLocaleDateString('pt-BR')} ${item.timestamp}`,
-          item.quantity,
-          item.rawCode || '',
-          item.colA || '',
-          item.colB || '',
-          item.colC || '',
+          item.area, item.colA || item.rawCode || '', item.lote,
         ])
         row.eachCell((cell) => {
           cell.font = { name: 'Arial', size: 11 }
@@ -707,6 +716,17 @@ function App() {
           <div className="last-scanned-badge">
             Último código lido: <strong>{lastScanned}</strong>
           </div>
+        )}
+        {pendingScan && (
+          <form className="scan-details-form" onSubmit={saveScannedItem}>
+            <label>Lote
+              <input value={lote} maxLength={10} required onChange={(e) => setLote(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))} placeholder="Até 10 caracteres" />
+            </label>
+            <label>Área
+              <input value={area} maxLength={4} required onChange={(e) => setArea(e.target.value.slice(0, 4))} placeholder="4 caracteres" />
+            </label>
+            <button type="submit" className="btn btn-primary"><Check size={18} /> Gravar</button>
+          </form>
         )}
       </div>
 
@@ -1137,5 +1157,3 @@ function App() {
 }
 
 export default App
-
-
