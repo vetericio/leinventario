@@ -16,8 +16,8 @@ import {
   Volume2,
   VolumeX,
   SlidersHorizontal,
-  ChevronDown,
-  ChevronUp,
+  X,
+  ExternalLink,
   Smartphone,
   Share2,
 } from 'lucide-react'
@@ -27,6 +27,8 @@ interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
+
+const EXAMPLE_CODE = '(99)002146769234018047<>'
 
 interface SplitRule {
   splitMode: '1' | '2' | '3'
@@ -135,7 +137,13 @@ function App() {
   const [exporting, setExporting] = useState(false)
 
   const [cameraError, setCameraError] = useState<string | null>(null)
-  const [showConfig, setShowConfig] = useState(true)
+  const [configOpen, setConfigOpen] = useState(false)
+  const [draftRule, setDraftRule] = useState<SplitRule | null>(null)
+  const [configSaved, setConfigSaved] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const [exportUrl, setExportUrl] = useState<string | null>(null)
+  const [exportFileName, setExportFileName] = useState('')
+  const inIframe = typeof window !== 'undefined' && window.self !== window.top
 
   const [splitRule, setSplitRule] = useState<SplitRule>(() => {
     const saved = localStorage.getItem('leinventario_split_rule')
@@ -484,16 +492,34 @@ function App() {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       })
       const url = URL.createObjectURL(blob)
+      const fileName = `leinventario_${now.toISOString().slice(0, 10)}.xlsx`
+
+      setExportError(null)
+      setExportUrl(url)
+      setExportFileName(fileName)
+
       const link = document.createElement('a')
       link.href = url
-      link.setAttribute('download', `leinventario_${now.toISOString().slice(0, 10)}.xlsx`)
+      link.rel = 'noopener'
+      link.setAttribute('download', fileName)
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-      URL.revokeObjectURL(url)
+
+      // Dentro do preview do editor (janela embutida) o download é bloqueado:
+      // abre em uma nova aba como alternativa.
+      if (inIframe) {
+        window.open(url, '_blank')
+      }
+
+      // Mantém o link válido por alguns minutos para o botão manual funcionar.
+      setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000)
     } catch (err) {
       console.error(err)
-      alert('Não foi possível gerar o arquivo Excel.')
+      setExportUrl(null)
+      setExportError(
+        'Não foi possível gerar a planilha. Tente abrir o app direto no navegador (Chrome ou Safari) e exportar de novo.'
+      )
     } finally {
       setExporting(false)
     }
@@ -519,6 +545,26 @@ function App() {
 
   const totalCodes = items.length
   const totalQuantity = items.reduce((acc, item) => acc + item.quantity, 0)
+
+  const cfg = draftRule ?? splitRule
+  const previewSample = lastScanned || EXAMPLE_CODE
+  const previewParsed = parseCode(previewSample, cfg)
+
+  const openConfig = () => {
+    setDraftRule({ ...splitRule })
+    setConfigOpen(true)
+  }
+
+  const updateDraft = (patch: Partial<SplitRule>) => {
+    setDraftRule((r) => ({ ...(r ?? splitRule), ...patch }))
+  }
+
+  const saveConfig = () => {
+    if (draftRule) setSplitRule(draftRule)
+    setConfigOpen(false)
+    setConfigSaved(true)
+    setTimeout(() => setConfigSaved(false), 2500)
+  }
 
   return (
     <div className="app-container">
@@ -582,227 +628,25 @@ function App() {
         </button>
       </div>
 
-      {/* Configurações de Divisão de Colunas */}
-      <div className="config-card">
-        <div
-          className="config-card-header"
-          onClick={() => setShowConfig(!showConfig)}
-        >
-          <div className="config-card-title">
-            <SlidersHorizontal size={20} className="config-icon" />
-            <span>Configuração de Divisão de Colunas</span>
+      {/* Configuração das colunas (janela separada) */}
+      <div className="config-trigger-card">
+        <div className="config-trigger-info">
+          <SlidersHorizontal size={20} className="config-icon" />
+          <div>
+            <strong>Configurar colunas</strong>
+            <p>
+              {splitRule.splitMode === '1'
+                ? 'Hoje: o código vai inteiro para 1 coluna'
+                : `Hoje: o código é dividido em ${splitRule.splitMode} partes`}
+            </p>
           </div>
-          <button className="icon-btn">
-            {showConfig ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-          </button>
         </div>
-
-        {showConfig && (
-          <div className="config-card-body">
-            <div className="config-group">
-              <label className="config-label">Modo de Divisão:</label>
-              <div className="split-mode-tabs">
-                <button
-                  type="button"
-                  className={`split-btn ${splitRule.splitMode === '1' ? 'active' : ''}`}
-                  onClick={() =>
-                    setSplitRule((r) => ({ ...r, splitMode: '1' }))
-                  }
-                >
-                  1 Coluna
-                </button>
-                <button
-                  type="button"
-                  className={`split-btn ${splitRule.splitMode === '2' ? 'active' : ''}`}
-                  onClick={() =>
-                    setSplitRule((r) => ({ ...r, splitMode: '2' }))
-                  }
-                >
-                  2 Colunas (Final → Início)
-                </button>
-                <button
-                  type="button"
-                  className={`split-btn ${splitRule.splitMode === '3' ? 'active' : ''}`}
-                  onClick={() =>
-                    setSplitRule((r) => ({ ...r, splitMode: '3' }))
-                  }
-                >
-                  3 Colunas (Final → Início)
-                </button>
-              </div>
-            </div>
-
-            {splitRule.splitMode !== '1' && (
-              <div className="config-inputs-grid">
-                {splitRule.splitMode === '2' && (
-                  <>
-                    <div className="config-input-item">
-                      <label>Coluna B (Caracteres do final):</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="50"
-                        value={splitRule.col2Length}
-                        onChange={(e) =>
-                          setSplitRule((r) => ({
-                            ...r,
-                            col2Length: parseInt(e.target.value) || 1,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="config-input-item">
-                      <label>Coluna A (Caracteres anteriores):</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="50"
-                        placeholder="0 = todo o restante"
-                        value={splitRule.col1Length}
-                        onChange={(e) =>
-                          setSplitRule((r) => ({
-                            ...r,
-                            col1Length: parseInt(e.target.value) || 0,
-                          }))
-                        }
-                      />
-                      <span className="input-help">0 = pega todo o restante</span>
-                    </div>
-                  </>
-                )}
-
-                {splitRule.splitMode === '3' && (
-                  <>
-                    <div className="config-input-item">
-                      <label>Coluna C (Caracteres do final):</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="50"
-                        value={splitRule.col3Length}
-                        onChange={(e) =>
-                          setSplitRule((r) => ({
-                            ...r,
-                            col3Length: parseInt(e.target.value) || 1,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="config-input-item">
-                      <label>Coluna B (Caracteres do meio):</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="50"
-                        value={splitRule.col2Length}
-                        onChange={(e) =>
-                          setSplitRule((r) => ({
-                            ...r,
-                            col2Length: parseInt(e.target.value) || 1,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="config-input-item">
-                      <label>Coluna A (Caracteres iniciais):</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="50"
-                        placeholder="0 = todo o restante"
-                        value={splitRule.col1Length}
-                        onChange={(e) =>
-                          setSplitRule((r) => ({
-                            ...r,
-                            col1Length: parseInt(e.target.value) || 0,
-                          }))
-                        }
-                      />
-                      <span className="input-help">0 = pega todo o restante</span>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-
-            <div className="config-inputs-grid">
-              <div className="config-input-item">
-                <label>Ignorar caracteres do início:</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="50"
-                  value={splitRule.ignoreStart ?? 0}
-                  onChange={(e) =>
-                    setSplitRule((r) => ({
-                      ...r,
-                      ignoreStart: Math.max(0, parseInt(e.target.value) || 0),
-                    }))
-                  }
-                />
-                <span className="input-help">0 = não ignora nada</span>
-              </div>
-              <div className="config-input-item">
-                <label>Ignorar caracteres do fim:</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="50"
-                  value={splitRule.ignoreEnd ?? 0}
-                  onChange={(e) =>
-                    setSplitRule((r) => ({
-                      ...r,
-                      ignoreEnd: Math.max(0, parseInt(e.target.value) || 0),
-                    }))
-                  }
-                />
-                <span className="input-help">0 = não ignora nada</span>
-              </div>
-            </div>
-
-            <div className="config-checkbox">
-
-              <label>
-                <input
-                  type="checkbox"
-                  checked={splitRule.cleanSymbols}
-                  onChange={(e) =>
-                    setSplitRule((r) => ({ ...r, cleanSymbols: e.target.checked }))
-                  }
-                />
-                Limpar caracteres especiais (ex: <code>()</code> <code>&lt;&gt;</code> espaços)
-              </label>
-            </div>
-
-            {/* Live Preview */}
-            {(() => {
-              const sample = lastScanned || '(99)002146769234018047<>'
-              const sampleParsed = parseCode(sample, splitRule)
-              return (
-                <div className="preview-box">
-                  <div className="preview-title">Exemplo de Leitura:</div>
-                  <div className="preview-raw">Original: <code>{sample}</code></div>
-                  <div className="preview-cols">
-                    <span className="preview-pill col-a">
-                      Col A: <strong>{sampleParsed.colA || '(vazio)'}</strong>
-                    </span>
-                    {splitRule.splitMode !== '1' && (
-                      <span className="preview-pill col-b">
-                        Col B: <strong>{sampleParsed.colB || '(vazio)'}</strong>
-                      </span>
-                    )}
-                    {splitRule.splitMode === '3' && (
-                      <span className="preview-pill col-c">
-                        Col C: <strong>{sampleParsed.colC || '(vazio)'}</strong>
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )
-            })()}
-          </div>
-        )}
+        <button type="button" className="btn btn-primary" onClick={openConfig}>
+          Abrir
+        </button>
       </div>
+
+      {configSaved && <div className="config-saved-toast">Configuração salva</div>}
 
       {/* Reader / Input Box */}
       <div className="scanner-card">
@@ -889,6 +733,18 @@ function App() {
           )}
         </div>
 
+        {exportUrl && (
+          <div className="export-note">
+            Planilha gerada. Se o download não começou,{' '}
+            <a href={exportUrl} download={exportFileName}>
+              toque aqui para baixar
+            </a>
+            .
+          </div>
+        )}
+
+        {exportError && <div className="export-note error">{exportError}</div>}
+
         {items.length === 0 ? (
           <div className="empty-state">
             <Barcode size={48} opacity={0.3} />
@@ -970,12 +826,31 @@ function App() {
                 <p>Instale na tela inicial para usar offline, sem internet e com acesso rápido.</p>
               </div>
             </div>
-            <button type="button" className="btn btn-install" onClick={handleInstallClick}>
-              <Smartphone size={18} /> Instalar App
-            </button>
+            {inIframe ? (
+              <a
+                className="btn btn-install"
+                href={window.location.href}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <ExternalLink size={18} /> Abrir em nova aba
+              </a>
+            ) : (
+              <button type="button" className="btn btn-install" onClick={handleInstallClick}>
+                <Smartphone size={18} /> Instalar App
+              </button>
+            )}
           </div>
 
-          {showInstallHelp && (
+          {inIframe && (
+            <div className="install-help-box">
+              Você está vendo o app dentro de uma janela embutida. Aqui o celular não deixa
+              instalar nem baixar arquivos. Toque em <strong>"Abrir em nova aba"</strong> e
+              faça a instalação por lá.
+            </div>
+          )}
+
+          {(showInstallHelp || inIframe) && (
             <div className="install-help-box">
               <p style={{ margin: '0 0 0.5rem 0', fontWeight: 700, color: 'var(--text-h)' }}>
                 Como instalar manualmente:
@@ -997,6 +872,213 @@ function App() {
         Feito por Veterício Tech - 31995512795
       </div>
 
+
+      {/* Janela de Configuração das Colunas */}
+      {configOpen && cfg && (
+        <div className="modal-overlay" onClick={() => setConfigOpen(false)}>
+          <div className="modal-card config-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="config-modal-head">
+              <h3 className="config-modal-title">
+                <SlidersHorizontal size={20} className="config-icon" /> Configurar colunas
+              </h3>
+              <button type="button" className="icon-btn" onClick={() => setConfigOpen(false)} title="Fechar">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="config-modal-body">
+              <div className="config-step">
+                <div className="config-step-title">1. Em quantas partes quer dividir o código?</div>
+                <div className="split-mode-tabs">
+                  <button
+                    type="button"
+                    className={`split-btn ${cfg.splitMode === '1' ? 'active' : ''}`}
+                    onClick={() => updateDraft({ splitMode: '1' })}
+                  >
+                    1 parte
+                  </button>
+                  <button
+                    type="button"
+                    className={`split-btn ${cfg.splitMode === '2' ? 'active' : ''}`}
+                    onClick={() => updateDraft({ splitMode: '2' })}
+                  >
+                    2 partes
+                  </button>
+                  <button
+                    type="button"
+                    className={`split-btn ${cfg.splitMode === '3' ? 'active' : ''}`}
+                    onClick={() => updateDraft({ splitMode: '3' })}
+                  >
+                    3 partes
+                  </button>
+                </div>
+                <div className="example-box">
+                  <span className="example-label">Exemplo</span>
+                  {cfg.splitMode === '1' && (
+                    <p>
+                      O código <code>{EXAMPLE_CODE}</code> vai inteiro para a <strong>Coluna A</strong>.
+                    </p>
+                  )}
+                  {cfg.splitMode === '2' && (
+                    <p>
+                      O código é contado <strong>de trás para frente</strong>: os últimos caracteres
+                      viram a <strong>Coluna B</strong> e o que sobra na frente vira a{' '}
+                      <strong>Coluna A</strong>.
+                    </p>
+                  )}
+                  {cfg.splitMode === '3' && (
+                    <p>
+                      Contando <strong>de trás para frente</strong>: os últimos caracteres viram a{' '}
+                      <strong>Coluna C</strong>, os anteriores a <strong>Coluna B</strong> e o resto a{' '}
+                      <strong>Coluna A</strong>.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {cfg.splitMode !== '1' && (
+                <div className="config-step">
+                  <div className="config-step-title">2. Quantos caracteres tem cada parte?</div>
+                  <div className="config-inputs-grid">
+                    {cfg.splitMode === '3' && (
+                      <div className="config-input-item">
+                        <label>Coluna C (últimos caracteres)</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="50"
+                          value={cfg.col3Length}
+                          onChange={(e) => updateDraft({ col3Length: parseInt(e.target.value) || 1 })}
+                        />
+                        <span className="input-help">Ex.: 2 → pega os 2 últimos</span>
+                      </div>
+                    )}
+                    <div className="config-input-item">
+                      <label>
+                        {cfg.splitMode === '3' ? 'Coluna B (antes da C)' : 'Coluna B (últimos caracteres)'}
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="50"
+                        value={cfg.col2Length}
+                        onChange={(e) => updateDraft({ col2Length: parseInt(e.target.value) || 1 })}
+                      />
+                      <span className="input-help">Ex.: 4 → pega 4 caracteres</span>
+                    </div>
+                    <div className="config-input-item">
+                      <label>Coluna A (o que sobra na frente)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={cfg.col1Length}
+                        onChange={(e) => updateDraft({ col1Length: parseInt(e.target.value) || 0 })}
+                      />
+                      <span className="input-help">0 = pega tudo o que sobrou</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="config-step">
+                <div className="config-step-title">
+                  {cfg.splitMode === '1' ? '2' : '3'}. Quer ignorar caracteres?
+                </div>
+                <div className="config-inputs-grid">
+                  <div className="config-input-item">
+                    <label>Ignorar do início</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="50"
+                      value={cfg.ignoreStart ?? 0}
+                      onChange={(e) =>
+                        updateDraft({ ignoreStart: Math.max(0, parseInt(e.target.value) || 0) })
+                      }
+                    />
+                    <span className="input-help">0 = não ignora nada</span>
+                  </div>
+                  <div className="config-input-item">
+                    <label>Ignorar do fim</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="50"
+                      value={cfg.ignoreEnd ?? 0}
+                      onChange={(e) =>
+                        updateDraft({ ignoreEnd: Math.max(0, parseInt(e.target.value) || 0) })
+                      }
+                    />
+                    <span className="input-help">0 = não ignora nada</span>
+                  </div>
+                </div>
+                <div className="example-box">
+                  <span className="example-label">Exemplo</span>
+                  <p>
+                    Ignorando 2 do início em <code>AB123456</code> sobra <code>123456</code>.
+                    Ignorando 2 do fim sobra <code>AB1234</code>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="config-step">
+                <div className="config-step-title">
+                  {cfg.splitMode === '1' ? '3' : '4'}. Limpeza do código
+                </div>
+                <div className="config-checkbox">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={cfg.cleanSymbols}
+                      onChange={(e) => updateDraft({ cleanSymbols: e.target.checked })}
+                    />
+                    Apagar símbolos e espaços (ex: <code>()</code> <code>&lt;&gt;</code>)
+                  </label>
+                </div>
+                <div className="example-box">
+                  <span className="example-label">Exemplo</span>
+                  <p>
+                    <code>(99)0021 4676</code> vira <code>990021 4676</code>{' '}
+                    {cfg.cleanSymbols ? '(ativado)' : '(desativado)'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="preview-box">
+                <div className="preview-title">Como vai ficar</div>
+                <div className="preview-raw">
+                  Código: <code>{previewSample}</code>
+                </div>
+                <div className="preview-cols">
+                  <span className="preview-pill col-a">
+                    Coluna A: <strong>{previewParsed.colA || '(vazio)'}</strong>
+                  </span>
+                  {cfg.splitMode !== '1' && (
+                    <span className="preview-pill col-b">
+                      Coluna B: <strong>{previewParsed.colB || '(vazio)'}</strong>
+                    </span>
+                  )}
+                  {cfg.splitMode === '3' && (
+                    <span className="preview-pill col-c">
+                      Coluna C: <strong>{previewParsed.colC || '(vazio)'}</strong>
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button type="button" className="btn" onClick={() => setConfigOpen(false)}>
+                Cancelar
+              </button>
+              <button type="button" className="btn btn-primary" onClick={saveConfig}>
+                Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Confirmar Limpeza */}
       {showClearModal && (
