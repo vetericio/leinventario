@@ -922,7 +922,7 @@
   justify-content: space-between;
 }
 
-.config-modal-title {
+.modal-card .config-modal-title {
   display: flex;
   align-items: center;
   gap: 0.5rem;
