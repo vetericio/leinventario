@@ -1,8 +1,8 @@
-const CACHE = 'leinventario-v1'
+const CACHE = 'leinventario-v2-logo'
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(['./', './index.html', './manifest.json', './logo.png'])).catch(() => {})
+    caches.open(CACHE).then((cache) => cache.addAll(['./', './index.html', './manifest.json', './logo.png', './favicon.png', './icon-192.png', './icon-512.png'])).catch(() => {})
   )
   self.skipWaiting()
 })
