@@ -16,8 +16,8 @@ import {
   Volume2,
   VolumeX,
   SlidersHorizontal,
-  ChevronDown,
-  ChevronUp,
+  X,
+  ExternalLink,
   Smartphone,
   Share2,
 } from 'lucide-react'
@@ -135,7 +135,13 @@ function App() {
   const [exporting, setExporting] = useState(false)
 
   const [cameraError, setCameraError] = useState<string | null>(null)
-  const [showConfig, setShowConfig] = useState(true)
+  const [configOpen, setConfigOpen] = useState(false)
+  const [draftRule, setDraftRule] = useState<SplitRule | null>(null)
+  const [configSaved, setConfigSaved] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const [exportUrl, setExportUrl] = useState<string | null>(null)
+  const [exportFileName, setExportFileName] = useState('')
+  const inIframe = typeof window !== 'undefined' && window.self !== window.top
 
   const [splitRule, setSplitRule] = useState<SplitRule>(() => {
     const saved = localStorage.getItem('leinventario_split_rule')
@@ -484,16 +490,34 @@ function App() {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       })
       const url = URL.createObjectURL(blob)
+      const fileName = `leinventario_${now.toISOString().slice(0, 10)}.xlsx`
+
+      setExportError(null)
+      setExportUrl(url)
+      setExportFileName(fileName)
+
       const link = document.createElement('a')
       link.href = url
-      link.setAttribute('download', `leinventario_${now.toISOString().slice(0, 10)}.xlsx`)
+      link.rel = 'noopener'
+      link.setAttribute('download', fileName)
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-      URL.revokeObjectURL(url)
+
+      // Dentro do preview do editor (janela embutida) o download é bloqueado:
+      // abre em uma nova aba como alternativa.
+      if (inIframe) {
+        window.open(url, '_blank')
+      }
+
+      // Mantém o link válido por alguns minutos para o botão manual funcionar.
+      setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000)
     } catch (err) {
       console.error(err)
-      alert('Não foi possível gerar o arquivo Excel.')
+      setExportUrl(null)
+      setExportError(
+        'Não foi possível gerar a planilha. Tente abrir o app direto no navegador (Chrome ou Safari) e exportar de novo.'
+      )
     } finally {
       setExporting(false)
     }
