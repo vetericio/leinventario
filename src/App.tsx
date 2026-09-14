@@ -28,6 +28,8 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
+const EXAMPLE_CODE = '(99)002146769234018047<>'
+
 interface SplitRule {
   splitMode: '1' | '2' | '3'
   cleanSymbols: boolean
@@ -741,7 +743,7 @@ function App() {
           </div>
         )}
 
-        {exportError && <div className="export-note error">{exportError}</div>
+        {exportError && <div className="export-note error">{exportError}</div>}
 
         {items.length === 0 ? (
           <div className="empty-state">
