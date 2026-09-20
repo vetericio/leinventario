@@ -38,6 +38,7 @@ interface InventoryItem {
   lote: string
   area: string
   user?: string
+  onlineSequence?: number
 }
 
 function parseCode(raw: string) {
@@ -50,6 +51,30 @@ function parseCode(raw: string) {
   const lote = value.slice(loteStart, loteStart + 10)
   const material = value.slice(loteStart + 10, loteStart + 18)
   return { rawCode: raw, colA: lote, colB: material }
+}
+
+const SUPABASE_URL = 'https://mwrmfcyrdxfxssebgknz.supabase.co'
+const SUPABASE_KEY = 'sb_publishable_Y5qsG-0F69poaQjUnWxGKw_8WOydkZc'
+
+async function createOnlineItem(item: InventoryItem) {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/leinventario_registros?select=sequencial`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify({
+      usuario: item.user,
+      area: item.area,
+      codigo_material: item.colB,
+      lote: item.lote,
+    }),
+  })
+  if (!response.ok) throw new Error(await response.text())
+  const data = await response.json() as Array<{ sequencial: number }>
+  return data[0]?.sequencial
 }
 
 function playBeep() {
@@ -79,6 +104,7 @@ function App() {
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [copied, setCopied] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [syncError, setSyncError] = useState<string | null>(null)
 
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
@@ -184,7 +210,7 @@ function App() {
     setLote(parsed.colA)
   }
 
-  const saveScannedItem = (e: React.FormEvent) => {
+  const saveScannedItem = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!pendingScan || !lote.trim() || area.trim().length !== 4 || !selectedUser) return
     const { parsed } = pendingScan
@@ -212,6 +238,14 @@ function App() {
     }
 
     setItems((prev) => [newItem, ...prev])
+    try {
+      const onlineSequence = await createOnlineItem(newItem)
+      setItems((prev) => prev.map((item) => item.id === newItem.id ? { ...item, onlineSequence } : item))
+      setSyncError(null)
+    } catch (err) {
+      console.error('Falha ao sincronizar registro:', err)
+      setSyncError('Registro salvo no aparelho, mas ainda não foi enviado para a base online.')
+    }
     setPendingScan(null)
     setLote('')
     setLastScanned(null)
@@ -347,7 +381,7 @@ function App() {
       const chronologicalItems = [...items].reverse()
       chronologicalItems.forEach((item, index) => {
         ws.addRow({
-          sequencial: index + 1,
+          sequencial: item.onlineSequence ?? index + 1,
           usuario: item.user || '',
           area: item.area || '',
           material: item.colB || '',
@@ -587,6 +621,8 @@ function App() {
           </form>
         )}      </div>
 
+      {syncError && <div className="export-note error">{syncError}</div>}
+
       {/* Planilha / Tabela Numerada */}
       <section className="inventory-section">
         <div className="inventory-header">
@@ -652,7 +688,7 @@ function App() {
               <tbody>
                 {[...items].reverse().map((item, index) => (
                   <tr key={item.id}>
-                    <td className="row-num">{index + 1}</td>
+                    <td className="row-num">{item.onlineSequence ?? index + 1}</td>
                     <td>{item.user || '-'}</td>
                     <td><span className="data-badge area-badge">{item.area || '-'}</span></td>
                     <td className="code-cell material-cell">{item.colB || '-'}</td>
