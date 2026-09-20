@@ -105,6 +105,8 @@ function App() {
   const [copied, setCopied] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [baseOnline, setBaseOnline] = useState<boolean | null>(null)
 
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
@@ -127,6 +129,7 @@ function App() {
       lote: (item as { lote?: string }).lote || '',
       area: (item as { area?: string }).area || '',
       user: (item as { user?: string }).user || '',
+      onlineSequence: (item as { onlineSequence?: number }).onlineSequence,
       quantity: item.quantity || 1,
       timestamp: item.timestamp || '',
     }))
@@ -193,6 +196,65 @@ function App() {
     if (selectedUser) localStorage.setItem('leinventario_user', selectedUser)
   }, [selectedUser])
 
+  const checkBaseOnline = async () => {
+    if (!navigator.onLine) {
+      setBaseOnline(false)
+      return false
+    }
+    try {
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/leinventario_registros?select=sequencial&limit=1`, {
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+      })
+      const ok = response.ok
+      setBaseOnline(ok)
+      return ok
+    } catch {
+      setBaseOnline(false)
+      return false
+    }
+  }
+
+  useEffect(() => {
+    checkBaseOnline()
+    const handleOnline = () => checkBaseOnline()
+    const handleOffline = () => setBaseOnline(false)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    const timer = window.setInterval(checkBaseOnline, 30000)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+      window.clearInterval(timer)
+    }
+  }, [])
+
+  const forceSync = async () => {
+    setSyncing(true)
+    const pending = items.filter((item) => !item.onlineSequence)
+    if (pending.length === 0) {
+      const online = await checkBaseOnline()
+      setSyncError(online ? null : 'Sem conexão com a base online.')
+      setSyncing(false)
+      return
+    }
+    try {
+      const synced = new Map<string, number>()
+      for (const item of [...pending].reverse()) {
+        const sequence = await createOnlineItem(item)
+        if (sequence) synced.set(item.id, sequence)
+      }
+      setItems((prev) => prev.map((item) => synced.has(item.id) ? { ...item, onlineSequence: synced.get(item.id) } : item))
+      setSyncError(null)
+      setBaseOnline(true)
+    } catch (err) {
+      console.error('Falha na sincronização manual:', err)
+      setSyncError('Não foi possível enviar todos os registros. Toque em Atualizar base online novamente quando houver internet.')
+      setBaseOnline(false)
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   const handleBarcodeRead = (code: string) => {
     const now = Date.now()
     if (now - lastScanTimeRef.current < 1500) {
@@ -242,9 +304,11 @@ function App() {
       const onlineSequence = await createOnlineItem(newItem)
       setItems((prev) => prev.map((item) => item.id === newItem.id ? { ...item, onlineSequence } : item))
       setSyncError(null)
+      setBaseOnline(true)
     } catch (err) {
       console.error('Falha ao sincronizar registro:', err)
       setSyncError('Registro salvo no aparelho, mas ainda não foi enviado para a base online.')
+      setBaseOnline(false)
     }
     setPendingScan(null)
     setLote('')
@@ -453,6 +517,15 @@ function App() {
           </div>
         </div>
       </header>
+
+      <div className="config-trigger-card" style={{ border: baseOnline ? '2px solid #16a34a' : '2px solid #dc2626' }}>
+        <div className="config-trigger-info">
+          <div>
+            <strong>{baseOnline === true ? '🟢 ONLINE — enviando para a base' : baseOnline === false ? '🔴 OFFLINE — registros ficam no aparelho' : '🟡 Verificando base online...'}</strong>
+            <p>{items.filter((item) => !item.onlineSequence).length === 0 ? 'Todos os registros deste aparelho estão sincronizados.' : `${items.filter((item) => !item.onlineSequence).length} registro(s) aguardando envio.`}</p>
+          </div>
+        </div>
+      </div>
 
       {/* Stats Header */}
       <div className="stats-bar">
@@ -706,6 +779,18 @@ function App() {
           </>
         )}
       </section>
+
+      <div className="config-trigger-card">
+        <div className="config-trigger-info">
+          <div>
+            <strong>Base online</strong>
+            <p>Força o envio de todos os registros pendentes deste aparelho.</p>
+          </div>
+        </div>
+        <button type="button" className="btn btn-primary" onClick={forceSync} disabled={syncing}>
+          <RotateCcw size={18} /> {syncing ? 'Atualizando...' : 'Atualizar base online'}
+        </button>
+      </div>
 
       {/* Opção Instalar o App no final */}
       {!isInstalled && (
