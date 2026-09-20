@@ -37,6 +37,7 @@ interface InventoryItem {
   dateRead?: string
   lote: string
   area: string
+  user?: string
 }
 
 function parseCode(raw: string) {
@@ -99,6 +100,7 @@ function App() {
       colC: item.colC,
       lote: (item as { lote?: string }).lote || '',
       area: (item as { area?: string }).area || '',
+      user: (item as { user?: string }).user || '',
       quantity: item.quantity || 1,
       timestamp: item.timestamp || '',
     }))
@@ -108,6 +110,7 @@ function App() {
   const [pendingScan, setPendingScan] = useState<{ code: string; parsed: ReturnType<typeof parseCode> } | null>(null)
   const [lote, setLote] = useState('')
   const [area, setArea] = useState('')
+  const [selectedUser, setSelectedUser] = useState(() => localStorage.getItem('leinventario_user') || '')
   const [showClearModal, setShowClearModal] = useState(false)
   const [clearConfirmInput, setClearConfirmInput] = useState('')
 
@@ -160,6 +163,10 @@ function App() {
     localStorage.setItem('leinventario_items', JSON.stringify(items))
   }, [items])
 
+  useEffect(() => {
+    if (selectedUser) localStorage.setItem('leinventario_user', selectedUser)
+  }, [selectedUser])
+
   const handleBarcodeRead = (code: string) => {
     const now = Date.now()
     if (now - lastScanTimeRef.current < 1500) {
@@ -179,7 +186,7 @@ function App() {
 
   const saveScannedItem = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!pendingScan || !lote.trim() || area.trim().length !== 4) return
+    if (!pendingScan || !lote.trim() || area.trim().length !== 4 || !selectedUser) return
     const { parsed } = pendingScan
 
     const nowObj = new Date()
@@ -201,6 +208,7 @@ function App() {
       dateRead: fullDateTime,
       lote: lote.trim(),
       area: area.trim(),
+      user: selectedUser,
     }
 
     setItems((prev) => [newItem, ...prev])
@@ -329,6 +337,7 @@ function App() {
 
       ws.columns = [
         { header: 'Sequencial', key: 'sequencial', width: 12 },
+        { header: 'Usuário', key: 'usuario', width: 16 },
         { header: 'Área', key: 'area', width: 12 },
         { header: 'Código Material', key: 'material', width: 20 },
         { header: 'Lote', key: 'lote', width: 18 },
@@ -339,6 +348,7 @@ function App() {
       chronologicalItems.forEach((item, index) => {
         ws.addRow({
           sequencial: index + 1,
+          usuario: item.user || '',
           area: item.area || '',
           material: item.colB || '',
           lote: item.lote || '',
@@ -385,7 +395,7 @@ function App() {
   const copyTable = () => {
     if (items.length === 0) return
     const text = [...items].reverse()
-      .map((item, idx) => `${idx + 1}\t${item.area}\t${item.colB || ''}\t${item.lote}\t${item.dateRead || item.timestamp}`)
+      .map((item, idx) => `${idx + 1}\t${item.user || ''}\t${item.area}\t${item.colB || ''}\t${item.lote}\t${item.dateRead || item.timestamp}`)
       .join('\n')
     navigator.clipboard.writeText(text)
     setCopied(true)
@@ -458,6 +468,21 @@ function App() {
         >
           {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
         </button>
+      </div>
+
+      <div className="config-trigger-card">
+        <div className="config-trigger-info">
+          <div>
+            <strong>Usuário</strong>
+            <p>Selecione quem está realizando o inventário.</p>
+          </div>
+        </div>
+        <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)} aria-label="Usuário">
+          <option value="">Selecionar</option>
+          <option value="Vinícius">Vinícius</option>
+          <option value="Ronie">Ronie</option>
+          <option value="Ednaldo">Ednaldo</option>
+        </select>
       </div>
 
       {/* Área manual */}
@@ -556,7 +581,7 @@ function App() {
             <label>Área
               <input value={area} readOnly />
             </label>
-            <button type="submit" className="btn btn-primary" disabled={area.trim().length !== 4 || lote.trim().length !== 10}>
+            <button type="submit" className="btn btn-primary" disabled={area.trim().length !== 4 || lote.trim().length !== 10 || !selectedUser}>
               <Check size={18} /> Salvar
             </button>
           </form>
@@ -616,6 +641,7 @@ function App() {
               <thead>
                 <tr>
                   <th>Sequencial</th>
+                  <th>Usuário</th>
                   <th>Área</th>
                   <th>Código Material</th>
                   <th>Lote</th>
@@ -627,6 +653,7 @@ function App() {
                 {[...items].reverse().map((item, index) => (
                   <tr key={item.id}>
                     <td className="row-num">{index + 1}</td>
+                    <td>{item.user || '-'}</td>
                     <td><span className="data-badge area-badge">{item.area || '-'}</span></td>
                     <td className="code-cell material-cell">{item.colB || '-'}</td>
                     <td><span className="data-badge lot-badge">{item.lote || '-'}</span></td>
