@@ -77,6 +77,18 @@ async function createOnlineItem(item: InventoryItem) {
   return data[0]?.sequencial
 }
 
+async function fetchOnlineItems(): Promise<InventoryItem[]> {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/leinventario_registros?select=sequencial,usuario,area,codigo_material,lote,bipado_em&order=sequencial.desc`, {
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+  })
+  if (!response.ok) throw new Error(await response.text())
+  const rows = await response.json() as Array<{ sequencial:number; usuario:string; area:string; codigo_material:string; lote:string; bipado_em:string }>
+  return rows.map((row) => {
+    const d = new Date(row.bipado_em)
+    return { id: `online-${row.sequencial}`, rawCode: '', colA: row.lote, colB: row.codigo_material, quantity: 1, timestamp: d.toLocaleTimeString('pt-BR'), dateRead: d.toLocaleString('pt-BR'), lote: row.lote, area: row.area, user: row.usuario, onlineSequence: row.sequencial }
+  })
+}
+
 function playBeep() {
   try {
     const audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
@@ -196,6 +208,11 @@ function App() {
     if (selectedUser) localStorage.setItem('leinventario_user', selectedUser)
   }, [selectedUser])
 
+  const pullOnlineItems = async () => {
+    const onlineItems = await fetchOnlineItems()
+    setItems((prev) => [...onlineItems, ...prev.filter((item) => !item.onlineSequence)])
+  }
+
   const checkBaseOnline = async () => {
     if (!navigator.onLine) {
       setBaseOnline(false)
@@ -215,8 +232,8 @@ function App() {
   }
 
   useEffect(() => {
-    checkBaseOnline()
-    const handleOnline = () => checkBaseOnline()
+    checkBaseOnline().then((ok) => { if (ok) pullOnlineItems().catch(console.error) })
+    const handleOnline = () => { checkBaseOnline().then((ok) => { if (ok) pullOnlineItems().catch(console.error) }) }
     const handleOffline = () => setBaseOnline(false)
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
@@ -232,8 +249,8 @@ function App() {
     setSyncing(true)
     const pending = items.filter((item) => !item.onlineSequence)
     if (pending.length === 0) {
-      const online = await checkBaseOnline()
-      setSyncError(online ? null : 'Sem conexão com a base online.')
+      try { await pullOnlineItems(); setBaseOnline(true); setSyncError(null) }
+      catch { setBaseOnline(false); setSyncError('Sem conexão com a base online.') }
       setSyncing(false)
       return
     }
@@ -244,6 +261,7 @@ function App() {
         if (sequence) synced.set(item.id, sequence)
       }
       setItems((prev) => prev.map((item) => synced.has(item.id) ? { ...item, onlineSequence: synced.get(item.id) } : item))
+      await pullOnlineItems()
       setSyncError(null)
       setBaseOnline(true)
     } catch (err) {
@@ -784,11 +802,11 @@ function App() {
         <div className="config-trigger-info">
           <div>
             <strong>Base online</strong>
-            <p>Força o envio de todos os registros pendentes deste aparelho.</p>
+            <p>Envia os pendentes e busca os registros feitos nos outros aparelhos.</p>
           </div>
         </div>
         <button type="button" className="btn btn-primary" onClick={forceSync} disabled={syncing}>
-          <RotateCcw size={18} /> {syncing ? 'Atualizando...' : 'Atualizar base online'}
+          <RotateCcw size={18} /> {syncing ? 'Sincronizando...' : 'Sincronizar todos os aparelhos'}
         </button>
       </div>
 
