@@ -26,8 +26,6 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
-const EXAMPLE_CODE = '(99)002146769234018047<>'
-
 interface InventoryItem {
   id: string
   rawCode: string
