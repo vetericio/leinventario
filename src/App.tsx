@@ -53,15 +53,19 @@ function playBeep() {
     const audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
     const osc = audioCtx.createOscillator()
     const gain = audioCtx.createGain()
-    osc.type = 'sine'
-    osc.frequency.setValueAtTime(880, audioCtx.currentTime)
-    gain.gain.setValueAtTime(0.1, audioCtx.currentTime)
+
+    // Bip forte e curto para confirmar cada leitura.
+    osc.type = 'square'
+    osc.frequency.setValueAtTime(1200, audioCtx.currentTime)
+    gain.gain.setValueAtTime(0.9, audioCtx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.28)
+
     osc.connect(gain)
     gain.connect(audioCtx.destination)
     osc.start()
-    osc.stop(audioCtx.currentTime + 0.15)
+    osc.stop(audioCtx.currentTime + 0.28)
   } catch {
-    // ignore audio
+    // O navegador pode bloquear áudio antes da primeira interação.
   }
 }
 
