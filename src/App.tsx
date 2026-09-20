@@ -15,8 +15,6 @@ import {
   RotateCcw,
   Volume2,
   VolumeX,
-  SlidersHorizontal,
-  X,
   ExternalLink,
   Smartphone,
   Share2,
@@ -29,16 +27,6 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 const EXAMPLE_CODE = '(99)002146769234018047<>'
-
-interface SplitRule {
-  splitMode: '1' | '2' | '3'
-  cleanSymbols: boolean
-  col1Length: number
-  col2Length: number
-  col3Length: number
-  ignoreStart?: number
-  ignoreEnd?: number
-}
 
 interface InventoryItem {
   id: string
@@ -53,65 +41,13 @@ interface InventoryItem {
   area: string
 }
 
-function parseCode(raw: string, rule: SplitRule) {
-  let cleaned = raw.trim()
-  if (rule.cleanSymbols) {
-    cleaned = cleaned.replace(/[()<>\s]/g, '')
-  }
-
-  const ignoreStart = Math.max(0, rule.ignoreStart || 0)
-  const ignoreEnd = Math.max(0, rule.ignoreEnd || 0)
-  if (ignoreStart || ignoreEnd) {
-    const end = cleaned.length - ignoreEnd
-    cleaned = end > ignoreStart ? cleaned.slice(ignoreStart, end) : ''
-  }
-
-
-  if (rule.splitMode === '1') {
-    return { rawCode: raw, colA: cleaned }
-  }
-
-  if (rule.splitMode === '2') {
-    const lenB = Math.max(1, rule.col2Length)
-    if (cleaned.length <= lenB) {
-      return { rawCode: raw, colA: '', colB: cleaned }
-    }
-    const colB = cleaned.slice(-lenB)
-    const rest = cleaned.slice(0, cleaned.length - lenB)
-
-    let colA = rest
-    if (rule.col1Length > 0 && rest.length > rule.col1Length) {
-      colA = rest.slice(-rule.col1Length)
-    }
-
-    return { rawCode: raw, colA, colB }
-  }
-
-  if (rule.splitMode === '3') {
-    const lenC = Math.max(1, rule.col3Length)
-    const lenB = Math.max(1, rule.col2Length)
-
-    if (cleaned.length <= lenC) {
-      return { rawCode: raw, colA: '', colB: '', colC: cleaned }
-    }
-    const colC = cleaned.slice(-lenC)
-    const restC = cleaned.slice(0, cleaned.length - lenC)
-
-    if (restC.length <= lenB) {
-      return { rawCode: raw, colA: '', colB: restC, colC }
-    }
-    const colB = restC.slice(-lenB)
-    const restB = restC.slice(0, restC.length - lenB)
-
-    let colA = restB
-    if (rule.col1Length > 0 && restB.length > rule.col1Length) {
-      colA = restB.slice(-rule.col1Length)
-    }
-
-    return { rawCode: raw, colA, colB, colC }
-  }
-
-  return { rawCode: raw, colA: cleaned }
+function parseCode(raw: string) {
+  // A leitura vem no formato visual (99) + 10 do lote + 8 do material + 2 finais.
+  // Os 4 primeiros caracteres são ignorados sem limpar símbolos antes do corte.
+  const value = raw.trim()
+  const lote = value.slice(4, 14)
+  const material = value.slice(14, 22)
+  return { rawCode: raw, colA: lote, colB: material }
 }
 
 function playBeep() {
@@ -139,27 +75,10 @@ function App() {
   const [exporting, setExporting] = useState(false)
 
   const [cameraError, setCameraError] = useState<string | null>(null)
-  const [configOpen, setConfigOpen] = useState(false)
-  const [draftRule, setDraftRule] = useState<SplitRule | null>(null)
-  const [configSaved, setConfigSaved] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
   const [exportUrl, setExportUrl] = useState<string | null>(null)
   const [exportFileName, setExportFileName] = useState('')
   const inIframe = typeof window !== 'undefined' && window.self !== window.top
-
-  const [splitRule, setSplitRule] = useState<SplitRule>(() => {
-    const saved = localStorage.getItem('leinventario_split_rule')
-    const base = {
-      splitMode: '2' as const,
-      cleanSymbols: true,
-      col1Length: 10,
-      col2Length: 8,
-      col3Length: 8,
-      ignoreStart: 0,
-      ignoreEnd: 0,
-    }
-    return saved ? { ...base, ...JSON.parse(saved) } : base
-  })
 
 
   const [items, setItems] = useState<InventoryItem[]>(() => {
@@ -236,10 +155,6 @@ function App() {
     localStorage.setItem('leinventario_items', JSON.stringify(items))
   }, [items])
 
-  useEffect(() => {
-    localStorage.setItem('leinventario_split_rule', JSON.stringify(splitRule))
-  }, [splitRule])
-
   const handleBarcodeRead = (code: string) => {
     const now = Date.now()
     if (now - lastScanTimeRef.current < 1500) {
@@ -252,63 +167,41 @@ function App() {
     }
 
     setLastScanned(code)
-    setPendingScan({ code, parsed: parseCode(code, splitRule) })
-    setLote('')
-    setArea('')
+    const parsed = parseCode(code)
+    setPendingScan({ code, parsed })
+    setLote(parsed.colA)
   }
 
   const saveScannedItem = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!pendingScan || !lote.trim() || !area.trim()) return
+    if (!pendingScan || !lote.trim() || area.trim().length !== 4) return
     const { parsed } = pendingScan
 
-    setItems((prev) => {
-      const existingIndex = prev.findIndex(
-        (item) =>
-          item.rawCode === parsed.rawCode ||
-          (item.colA === parsed.colA && item.lote === lote.trim() && item.area === area.trim() &&
-            (item.colB || '') === (parsed.colB || '') &&
-            (item.colC || '') === (parsed.colC || ''))
-      )
-      const nowObj = new Date()
-      const dateStr = nowObj.toLocaleDateString('pt-BR')
-      const timeStr = nowObj.toLocaleTimeString('pt-BR', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      })
-      const fullDateTime = `${dateStr} ${timeStr}`
-
-      if (existingIndex >= 0) {
-        const updated = [...prev]
-        updated[existingIndex] = {
-          ...updated[existingIndex],
-          quantity: updated[existingIndex].quantity + 1,
-          timestamp: timeStr,
-          dateRead: fullDateTime,
-          lote: lote.trim(),
-          area: area.trim(),
-        }
-        return updated
-      } else {
-        const newItem: InventoryItem = {
-          id: Date.now().toString(),
-          rawCode: parsed.rawCode,
-          colA: parsed.colA,
-          colB: parsed.colB,
-          colC: parsed.colC,
-          quantity: 1,
-          timestamp: timeStr,
-          dateRead: fullDateTime,
-          lote: lote.trim(),
-          area: area.trim(),
-        }
-        return [newItem, ...prev]
-      }
+    const nowObj = new Date()
+    const dateStr = nowObj.toLocaleDateString('pt-BR')
+    const timeStr = nowObj.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
     })
+    const fullDateTime = `${dateStr} ${timeStr}`
+
+    const newItem: InventoryItem = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      rawCode: parsed.rawCode,
+      colA: lote.trim(),
+      colB: parsed.colB,
+      quantity: 1,
+      timestamp: timeStr,
+      dateRead: fullDateTime,
+      lote: lote.trim(),
+      area: area.trim(),
+    }
+
+    setItems((prev) => [newItem, ...prev])
     setPendingScan(null)
     setLote('')
-    setArea('')
+    setLastScanned(null)
   }
 
   const startCamera = async () => {
@@ -410,20 +303,6 @@ function App() {
     setManualCode('')
   }
 
-  const updateQuantity = (id: string, delta: number) => {
-    setItems((prev) =>
-      prev
-        .map((item) => {
-          if (item.id === id) {
-            const newQty = item.quantity + delta
-            return newQty > 0 ? { ...item, quantity: newQty } : null
-          }
-          return item
-        })
-        .filter(Boolean) as InventoryItem[]
-    )
-  }
-
   const removeItem = (id: string) => {
     setItems((prev) => prev.filter((item) => item.id !== id))
   }
@@ -439,78 +318,35 @@ function App() {
     try {
       const ExcelJS = (await import('exceljs/dist/exceljs.min.js')).default
       const now = new Date()
-      const exportDateStr = `${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR')}`
-
       const wb = new ExcelJS.Workbook()
       wb.creator = 'Leinventário'
       const ws = wb.addWorksheet('Inventário')
 
-      const hasDivisionB = splitRule.splitMode !== '1'
-      const hasDivisionC = splitRule.splitMode === '3'
-      const exportColumns = [
-        { key: 'number', width: 10 },
-        { key: 'complete', width: 28 },
-        { key: 'divisionA', width: 22 },
-        ...(hasDivisionB ? [{ key: 'divisionB', width: 22 }] : []),
-        ...(hasDivisionC ? [{ key: 'divisionC', width: 22 }] : []),
-        { key: 'lote', width: 16 },
-        { key: 'area', width: 12 },
+      ws.columns = [
+        { header: 'Sequencial', key: 'sequencial', width: 12 },
+        { header: 'Área', key: 'area', width: 12 },
+        { header: 'Código Material', key: 'material', width: 20 },
+        { header: 'Lote', key: 'lote', width: 18 },
+        { header: 'Data e horário bipado', key: 'dataHora', width: 24 },
       ]
-      ws.columns = exportColumns
 
-      // Logo no topo
-      try {
-        const res = await fetch('./icon-192.png')
-        const buf = await res.arrayBuffer()
-        const imgId = wb.addImage({ buffer: buf, extension: 'png' })
-        ws.addImage(imgId, { tl: { col: 0, row: 0 }, ext: { width: 90, height: 90 } })
-      } catch {
-        // segue sem logo se a imagem não carregar
-      }
-      ws.getRow(1).height = 70
-
-      const lastColumn = String.fromCharCode(65 + exportColumns.length - 1)
-      ws.mergeCells(`B1:${lastColumn}1`)
-      const title = ws.getCell('B1')
-      title.value = 'Leinventário'
-      title.font = { name: 'Arial', size: 18, bold: true, color: { argb: 'FF00A344' } }
-      title.alignment = { vertical: 'middle' }
-
-      ws.mergeCells(`B2:${lastColumn}2`)
-      const sub = ws.getCell('B2')
-      sub.value = `Data e hora da exportação: ${exportDateStr}`
-      sub.font = { name: 'Arial', size: 10, color: { argb: 'FF555555' } }
-
-      const headerRow = ws.addRow([
-        'Número', 'Número completo', 'Divisão A',
-        ...(hasDivisionB ? ['Divisão B'] : []),
-        ...(hasDivisionC ? ['Divisão C'] : []),
-        'Lote', 'Área',
-      ])
-      headerRow.eachCell((cell) => {
-        cell.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FFFFFFFF' } }
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF00A344' } }
-        cell.alignment = { horizontal: 'center', vertical: 'middle' }
-        cell.border = { bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } } }
-      })
-
-      items.forEach((item, index) => {
-        const row = ws.addRow([
-          index + 1,
-          item.rawCode || '',
-          item.colA || '',
-          ...(hasDivisionB ? [item.colB || ''] : []),
-          ...(hasDivisionC ? [item.colC || ''] : []),
-          item.lote || '', item.area || '',
-        ])
-        row.eachCell((cell) => {
-          cell.font = { name: 'Arial', size: 11 }
-          cell.border = { bottom: { style: 'hair', color: { argb: 'FFE5E5E5' } } }
+      const chronologicalItems = [...items].reverse()
+      chronologicalItems.forEach((item, index) => {
+        ws.addRow({
+          sequencial: index + 1,
+          area: item.area || '',
+          material: item.colB || '',
+          lote: item.lote || '',
+          dataHora: item.dateRead || item.timestamp || '',
         })
-        row.getCell(1).alignment = { horizontal: 'center' }
       })
 
-      ws.views = [{ state: 'frozen', ySplit: headerRow.number }]
+      const headerRow = ws.getRow(1)
+      headerRow.eachCell((cell) => {
+        cell.font = { name: 'Arial', size: 11, bold: true }
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      })
+      ws.views = [{ state: 'frozen', ySplit: 1 }]
 
       const out = await wb.xlsx.writeBuffer()
       const blob = new Blob([out], {
@@ -518,7 +354,6 @@ function App() {
       })
       const url = URL.createObjectURL(blob)
       const fileName = `leinventario_${now.toISOString().slice(0, 10)}.xlsx`
-
       setExportError(null)
       setExportUrl(url)
       setExportFileName(fileName)
@@ -530,21 +365,12 @@ function App() {
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-
-      // Dentro do preview do editor (janela embutida) o download é bloqueado:
-      // abre em uma nova aba como alternativa.
-      if (inIframe) {
-        window.open(url, '_blank')
-      }
-
-      // Mantém o link válido por alguns minutos para o botão manual funcionar.
+      if (inIframe) window.open(url, '_blank')
       setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000)
     } catch (err) {
       console.error(err)
       setExportUrl(null)
-      setExportError(
-        'Não foi possível gerar a planilha. Tente abrir o app direto no navegador (Chrome ou Safari) e exportar de novo.'
-      )
+      setExportError('Não foi possível gerar a planilha. Tente novamente.')
     } finally {
       setExporting(false)
     }
@@ -553,43 +379,19 @@ function App() {
 
   const copyTable = () => {
     if (items.length === 0) return
-    const text = items
-      .map((item, idx) => {
-        let cols = `${idx + 1}.\t${item.rawCode}\t${item.colA}`
-        if (item.colB) cols += `\t${item.colB}`
-        if (item.colC) cols += `\t${item.colC}`
-        cols += `\t${item.lote}\t${item.area}\tQtd: ${item.quantity}\t(${item.timestamp})`
-        return cols
-      })
+    const text = [...items].reverse()
+      .map((item, idx) => `${idx + 1}\t${item.area}\t${item.colB || ''}\t${item.lote}\t${item.dateRead || item.timestamp}`)
       .join('\n')
-
     navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
 
+
   const totalCodes = items.length
   const totalQuantity = items.reduce((acc, item) => acc + item.quantity, 0)
 
-  const cfg = draftRule ?? splitRule
-  const previewSample = lastScanned || EXAMPLE_CODE
-  const previewParsed = parseCode(previewSample, cfg)
 
-  const openConfig = () => {
-    setDraftRule({ ...splitRule })
-    setConfigOpen(true)
-  }
-
-  const updateDraft = (patch: Partial<SplitRule>) => {
-    setDraftRule((r) => ({ ...(r ?? splitRule), ...patch }))
-  }
-
-  const saveConfig = () => {
-    if (draftRule) setSplitRule(draftRule)
-    setConfigOpen(false)
-    setConfigSaved(true)
-    setTimeout(() => setConfigSaved(false), 2500)
-  }
 
   return (
     <div className="app-container">
@@ -653,25 +455,22 @@ function App() {
         </button>
       </div>
 
-      {/* Configuração das colunas (janela separada) */}
+      {/* Área manual */}
       <div className="config-trigger-card">
         <div className="config-trigger-info">
-          <SlidersHorizontal size={20} className="config-icon" />
           <div>
-            <strong>Configurar colunas</strong>
-            <p>
-              {splitRule.splitMode === '1'
-                ? 'Hoje: o código vai inteiro para 1 coluna'
-                : `Hoje: o código é dividido em ${splitRule.splitMode} partes`}
-            </p>
+            <strong>Área</strong>
+            <p>Informe os 4 caracteres da área antes de bipar.</p>
           </div>
         </div>
-        <button type="button" className="btn btn-primary" onClick={openConfig}>
-          Abrir
-        </button>
+        <input
+          value={area}
+          maxLength={4}
+          onChange={(e) => setArea(e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4))}
+          placeholder="Área"
+          aria-label="Área de 4 caracteres"
+        />
       </div>
-
-      {configSaved && <div className="config-saved-toast">Configuração salva</div>}
 
       {/* Reader / Input Box */}
       <div className="scanner-card">
@@ -736,15 +535,25 @@ function App() {
         {pendingScan && (
           <form className="scan-details-form" onSubmit={saveScannedItem}>
             <label>Lote
-              <input value={lote} maxLength={10} required onChange={(e) => setLote(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))} placeholder="Até 10 caracteres" />
+              <input
+                value={lote}
+                maxLength={10}
+                required
+                onChange={(e) => setLote(e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 10))}
+                placeholder="10 caracteres"
+              />
+            </label>
+            <label>Código do material
+              <input value={pendingScan.parsed.colB || ''} readOnly />
             </label>
             <label>Área
-              <input value={area} maxLength={4} required onChange={(e) => setArea(e.target.value.slice(0, 4))} placeholder="4 caracteres" />
+              <input value={area} readOnly />
             </label>
-            <button type="submit" className="btn btn-primary"><Check size={18} /> Gravar</button>
+            <button type="submit" className="btn btn-primary" disabled={area.trim().length !== 4 || lote.trim().length !== 10}>
+              <Check size={18} /> Salvar
+            </button>
           </form>
-        )}
-      </div>
+        )}      </div>
 
       {/* Planilha / Tabela Numerada */}
       <section className="inventory-section">
@@ -799,59 +608,30 @@ function App() {
               <table className="inventory-table">
               <thead>
                 <tr>
-                  <th style={{ width: '70px' }}>Número</th>
-                  <th>Número completo</th>
-                  <th>Divisão A</th>
-                  {splitRule.splitMode !== '1' && <th>Divisão B</th>}
-                  {splitRule.splitMode === '3' && <th>Divisão C</th>}
-                  <th>Lote</th>
+                  <th>Sequencial</th>
                   <th>Área</th>
-                  <th style={{ width: '120px', textAlign: 'center' }}>Quantidade</th>
-                  <th style={{ width: '100px' }}>Hora</th>
+                  <th>Código Material</th>
+                  <th>Lote</th>
+                  <th>Data e horário bipado</th>
                   <th style={{ width: '60px', textAlign: 'center' }}>Ação</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((item, index) => (
+                {[...items].reverse().map((item, index) => (
                   <tr key={item.id}>
                     <td className="row-num">{index + 1}</td>
-                    <td className="code-cell material-cell">{item.rawCode || '-'}</td>
-                    <td className="code-cell col-cell">{item.colA || '-'}</td>
-                    {splitRule.splitMode !== '1' && <td className="code-cell col-cell">{item.colB || '-'}</td>}
-                    {splitRule.splitMode === '3' && <td className="code-cell col-cell">{item.colC || '-'}</td>}
-                    <td><span className="data-badge lot-badge">{item.lote || '-'}</span></td>
                     <td><span className="data-badge area-badge">{item.area || '-'}</span></td>
-                    <td>
-                      <div className="qty-controls">
-                        <button
-                          className="qty-btn"
-                          onClick={() => updateQuantity(item.id, -1)}
-                        >
-                          -
-                        </button>
-                        <span className="qty-value">{item.quantity}</span>
-                        <button
-                          className="qty-btn"
-                          onClick={() => updateQuantity(item.id, 1)}
-                        >
-                          +
-                        </button>
-                      </div>
-                    </td>
-                    <td className="time-cell">{item.timestamp}</td>
+                    <td className="code-cell material-cell">{item.colB || '-'}</td>
+                    <td><span className="data-badge lot-badge">{item.lote || '-'}</span></td>
+                    <td className="time-cell">{item.dateRead || item.timestamp}</td>
                     <td style={{ textAlign: 'center' }}>
-                      <button
-                        className="icon-btn danger"
-                        onClick={() => removeItem(item.id)}
-                        title="Excluir"
-                      >
+                      <button className="icon-btn danger" onClick={() => removeItem(item.id)} title="Excluir">
                         <Trash2 size={16} />
                       </button>
                     </td>
                   </tr>
                 ))}
-              </tbody>
-            </table>
+              </tbody>            </table>
             </div>
           </>
         )}
@@ -916,213 +696,6 @@ function App() {
         Feito por Veterício Tech - 31995512795
       </div>
 
-
-      {/* Janela de Configuração das Colunas */}
-      {configOpen && cfg && (
-        <div className="modal-overlay" onClick={() => setConfigOpen(false)}>
-          <div className="modal-card config-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="config-modal-head">
-              <h3 className="config-modal-title">
-                <SlidersHorizontal size={20} className="config-icon" /> Configurar colunas
-              </h3>
-              <button type="button" className="icon-btn" onClick={() => setConfigOpen(false)} title="Fechar">
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="config-modal-body">
-              <div className="config-step">
-                <div className="config-step-title">1. Em quantas partes quer dividir o código?</div>
-                <div className="split-mode-tabs">
-                  <button
-                    type="button"
-                    className={`split-btn ${cfg.splitMode === '1' ? 'active' : ''}`}
-                    onClick={() => updateDraft({ splitMode: '1' })}
-                  >
-                    1 parte
-                  </button>
-                  <button
-                    type="button"
-                    className={`split-btn ${cfg.splitMode === '2' ? 'active' : ''}`}
-                    onClick={() => updateDraft({ splitMode: '2' })}
-                  >
-                    2 partes
-                  </button>
-                  <button
-                    type="button"
-                    className={`split-btn ${cfg.splitMode === '3' ? 'active' : ''}`}
-                    onClick={() => updateDraft({ splitMode: '3' })}
-                  >
-                    3 partes
-                  </button>
-                </div>
-                <div className="example-box">
-                  <span className="example-label">Exemplo</span>
-                  {cfg.splitMode === '1' && (
-                    <p>
-                      O código <code>{EXAMPLE_CODE}</code> vai inteiro para a <strong>Coluna A</strong>.
-                    </p>
-                  )}
-                  {cfg.splitMode === '2' && (
-                    <p>
-                      O código é contado <strong>de trás para frente</strong>: os últimos caracteres
-                      viram a <strong>Coluna B</strong> e o que sobra na frente vira a{' '}
-                      <strong>Coluna A</strong>.
-                    </p>
-                  )}
-                  {cfg.splitMode === '3' && (
-                    <p>
-                      Contando <strong>de trás para frente</strong>: os últimos caracteres viram a{' '}
-                      <strong>Coluna C</strong>, os anteriores a <strong>Coluna B</strong> e o resto a{' '}
-                      <strong>Coluna A</strong>.
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {cfg.splitMode !== '1' && (
-                <div className="config-step">
-                  <div className="config-step-title">2. Quantos caracteres tem cada parte?</div>
-                  <div className="config-inputs-grid">
-                    {cfg.splitMode === '3' && (
-                      <div className="config-input-item">
-                        <label>Coluna C (últimos caracteres)</label>
-                        <input
-                          type="number"
-                          min="1"
-                          max="50"
-                          value={cfg.col3Length}
-                          onChange={(e) => updateDraft({ col3Length: parseInt(e.target.value) || 1 })}
-                        />
-                        <span className="input-help">Ex.: 2 → pega os 2 últimos</span>
-                      </div>
-                    )}
-                    <div className="config-input-item">
-                      <label>
-                        {cfg.splitMode === '3' ? 'Coluna B (antes da C)' : 'Coluna B (últimos caracteres)'}
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="50"
-                        value={cfg.col2Length}
-                        onChange={(e) => updateDraft({ col2Length: parseInt(e.target.value) || 1 })}
-                      />
-                      <span className="input-help">Ex.: 4 → pega 4 caracteres</span>
-                    </div>
-                    <div className="config-input-item">
-                      <label>Coluna A (o que sobra na frente)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="50"
-                        value={cfg.col1Length}
-                        onChange={(e) => updateDraft({ col1Length: parseInt(e.target.value) || 0 })}
-                      />
-                      <span className="input-help">0 = pega tudo o que sobrou</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div className="config-step">
-                <div className="config-step-title">
-                  {cfg.splitMode === '1' ? '2' : '3'}. Quer ignorar caracteres?
-                </div>
-                <div className="config-inputs-grid">
-                  <div className="config-input-item">
-                    <label>Ignorar do início</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="50"
-                      value={cfg.ignoreStart ?? 0}
-                      onChange={(e) =>
-                        updateDraft({ ignoreStart: Math.max(0, parseInt(e.target.value) || 0) })
-                      }
-                    />
-                    <span className="input-help">0 = não ignora nada</span>
-                  </div>
-                  <div className="config-input-item">
-                    <label>Ignorar do fim</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="50"
-                      value={cfg.ignoreEnd ?? 0}
-                      onChange={(e) =>
-                        updateDraft({ ignoreEnd: Math.max(0, parseInt(e.target.value) || 0) })
-                      }
-                    />
-                    <span className="input-help">0 = não ignora nada</span>
-                  </div>
-                </div>
-                <div className="example-box">
-                  <span className="example-label">Exemplo</span>
-                  <p>
-                    Ignorando 2 do início em <code>AB123456</code> sobra <code>123456</code>.
-                    Ignorando 2 do fim sobra <code>AB1234</code>.
-                  </p>
-                </div>
-              </div>
-
-              <div className="config-step">
-                <div className="config-step-title">
-                  {cfg.splitMode === '1' ? '3' : '4'}. Limpeza do código
-                </div>
-                <div className="config-checkbox">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={cfg.cleanSymbols}
-                      onChange={(e) => updateDraft({ cleanSymbols: e.target.checked })}
-                    />
-                    Apagar símbolos e espaços (ex: <code>()</code> <code>&lt;&gt;</code>)
-                  </label>
-                </div>
-                <div className="example-box">
-                  <span className="example-label">Exemplo</span>
-                  <p>
-                    <code>(99)0021 4676</code> vira <code>990021 4676</code>{' '}
-                    {cfg.cleanSymbols ? '(ativado)' : '(desativado)'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="preview-box">
-                <div className="preview-title">Como vai ficar</div>
-                <div className="preview-raw">
-                  Código: <code>{previewSample}</code>
-                </div>
-                <div className="preview-cols">
-                  <span className="preview-pill col-a">
-                    Coluna A: <strong>{previewParsed.colA || '(vazio)'}</strong>
-                  </span>
-                  {cfg.splitMode !== '1' && (
-                    <span className="preview-pill col-b">
-                      Coluna B: <strong>{previewParsed.colB || '(vazio)'}</strong>
-                    </span>
-                  )}
-                  {cfg.splitMode === '3' && (
-                    <span className="preview-pill col-c">
-                      Coluna C: <strong>{previewParsed.colC || '(vazio)'}</strong>
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="modal-actions">
-              <button type="button" className="btn" onClick={() => setConfigOpen(false)}>
-                Cancelar
-              </button>
-              <button type="button" className="btn btn-primary" onClick={saveConfig}>
-                Salvar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Modal Confirmar Limpeza */}
       {showClearModal && (
