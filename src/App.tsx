@@ -39,12 +39,12 @@ interface InventoryItem {
   area: string
 }
 
-function parseCode(raw: string) {
-  // A leitura vem no formato visual (99) + 10 do lote + 8 do material + 2 finais.
-  // Os 4 primeiros caracteres são ignorados sem limpar símbolos antes do corte.
+function parseCode(raw: string, loteStart: number, loteLength: number, materialStart: number, materialLength: number) {
   const value = raw.trim()
-  const lote = value.slice(4, 14)
-  const material = value.slice(14, 22)
+  const loteIndex = Math.max(0, loteStart - 1)
+  const materialIndex = Math.max(0, materialStart - 1)
+  const lote = value.slice(loteIndex, loteIndex + loteLength)
+  const material = value.slice(materialIndex, materialIndex + materialLength)
   return { rawCode: raw, colA: lote, colB: material }
 }
 
@@ -80,6 +80,10 @@ function App() {
   const [exportError, setExportError] = useState<string | null>(null)
   const [exportUrl, setExportUrl] = useState<string | null>(null)
   const [exportFileName, setExportFileName] = useState('')
+  const [loteStart, setLoteStart] = useState(() => Number(localStorage.getItem('leinventario_lote_start')) || 5)
+  const [loteLength, setLoteLength] = useState(() => Number(localStorage.getItem('leinventario_lote_length')) || 10)
+  const [materialStart, setMaterialStart] = useState(() => Number(localStorage.getItem('leinventario_material_start')) || 15)
+  const [materialLength, setMaterialLength] = useState(() => Number(localStorage.getItem('leinventario_material_length')) || 8)
   const inIframe = typeof window !== 'undefined' && window.self !== window.top
 
 
@@ -157,6 +161,13 @@ function App() {
     localStorage.setItem('leinventario_items', JSON.stringify(items))
   }, [items])
 
+  useEffect(() => {
+    localStorage.setItem('leinventario_lote_start', String(loteStart))
+    localStorage.setItem('leinventario_lote_length', String(loteLength))
+    localStorage.setItem('leinventario_material_start', String(materialStart))
+    localStorage.setItem('leinventario_material_length', String(materialLength))
+  }, [loteStart, loteLength, materialStart, materialLength])
+
   const handleBarcodeRead = (code: string) => {
     const now = Date.now()
     if (now - lastScanTimeRef.current < 1500) {
@@ -169,7 +180,7 @@ function App() {
     }
 
     setLastScanned(code)
-    const parsed = parseCode(code)
+    const parsed = parseCode(code, loteStart, loteLength, materialStart, materialLength)
     setPendingScan({ code, parsed })
     setLote(parsed.colA)
   }
@@ -472,6 +483,29 @@ function App() {
           placeholder="Área"
           aria-label="Área de 4 caracteres"
         />
+      </div>
+
+      <div className="config-trigger-card">
+        <div className="config-trigger-info">
+          <div>
+            <strong>Configuração da leitura</strong>
+            <p>Defina a posição inicial e quantos caracteres considerar no código bipado.</p>
+          </div>
+        </div>
+        <div className="scan-details-form">
+          <label>Lote — começa no caractere
+            <input type="number" min="1" value={loteStart} onChange={(e) => setLoteStart(Math.max(1, Number(e.target.value) || 1))} />
+          </label>
+          <label>Lote — quantidade de caracteres
+            <input type="number" min="1" value={loteLength} onChange={(e) => setLoteLength(Math.max(1, Number(e.target.value) || 1))} />
+          </label>
+          <label>Material — começa no caractere
+            <input type="number" min="1" value={materialStart} onChange={(e) => setMaterialStart(Math.max(1, Number(e.target.value) || 1))} />
+          </label>
+          <label>Material — quantidade de caracteres
+            <input type="number" min="1" value={materialLength} onChange={(e) => setMaterialLength(Math.max(1, Number(e.target.value) || 1))} />
+          </label>
+        </div>
       </div>
 
       {/* Reader / Input Box */}
