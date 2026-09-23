@@ -119,6 +119,8 @@ function App() {
   const [syncError, setSyncError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [baseOnline, setBaseOnline] = useState<boolean | null>(null)
+  const [saveErrors, setSaveErrors] = useState<string[]>([])
+  const [saveConfirmation, setSaveConfirmation] = useState<string | null>(null)
 
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
@@ -285,14 +287,27 @@ function App() {
     }
 
     setLastScanned(code)
+    setSaveErrors([])
+    setSaveConfirmation(null)
     const parsed = parseCode(code)
     setPendingScan({ code, parsed })
     setLote(parsed.colA)
   }
 
-  const saveScannedItem = async (e: React.FormEvent) => {
+  const saveScannedItem = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!pendingScan || !lote.trim() || area.trim().length !== 4 || !selectedUser) return
+    if (!pendingScan) return
+
+    const validationErrors: string[] = []
+    if (!selectedUser) validationErrors.push('Selecione o usuário.')
+    if (area.trim().length !== 4) validationErrors.push('Preencha a área com 4 caracteres.')
+    if (lote.trim().length !== 10) validationErrors.push('Preencha o lote com 10 caracteres.')
+    if (validationErrors.length > 0) {
+      setSaveErrors(validationErrors)
+      setSaveConfirmation(null)
+      return
+    }
+
     const { parsed } = pendingScan
 
     const nowObj = new Date()
@@ -318,19 +333,24 @@ function App() {
     }
 
     setItems((prev) => [newItem, ...prev])
-    try {
-      const onlineSequence = await createOnlineItem(newItem)
-      setItems((prev) => prev.map((item) => item.id === newItem.id ? { ...item, onlineSequence } : item))
-      setSyncError(null)
-      setBaseOnline(true)
-    } catch (err) {
-      console.error('Falha ao sincronizar registro:', err)
-      setSyncError('Registro salvo no aparelho, mas ainda não foi enviado para a base online.')
-      setBaseOnline(false)
-    }
     setPendingScan(null)
     setLote('')
     setLastScanned(null)
+    setSaveErrors([])
+    setSaveConfirmation('Código salvo no aparelho.')
+    window.setTimeout(() => setSaveConfirmation(null), 3000)
+
+    void createOnlineItem(newItem)
+      .then((onlineSequence) => {
+        setItems((prev) => prev.map((item) => item.id === newItem.id ? { ...item, onlineSequence } : item))
+        setSyncError(null)
+        setBaseOnline(true)
+      })
+      .catch((err) => {
+        console.error('Falha ao sincronizar registro:', err)
+        setSyncError('Registro salvo no aparelho, mas ainda não foi enviado para a base online.')
+        setBaseOnline(false)
+      })
   }
 
   const startCamera = async () => {
@@ -691,26 +711,38 @@ function App() {
         )}
         {pendingScan && (
           <form className="scan-details-form" onSubmit={saveScannedItem}>
-            <label>Lote
+            <label className={saveErrors.some((message) => message.includes('lote')) ? 'field-error' : ''}>Lote
               <input
                 value={lote}
                 maxLength={10}
                 required
-                onChange={(e) => setLote(e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 10))}
+                aria-invalid={saveErrors.some((message) => message.includes('lote'))}
+                onChange={(e) => {
+                  setLote(e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 10))
+                  setSaveErrors([])
+                }}
                 placeholder="10 caracteres"
               />
             </label>
             <label>Código do material
               <input value={pendingScan.parsed.colB || ''} readOnly />
             </label>
-            <label>Área
-              <input value={area} readOnly />
+            <label className={saveErrors.some((message) => message.includes('área')) ? 'field-error' : ''}>Área
+              <input value={area} readOnly aria-invalid={saveErrors.some((message) => message.includes('área'))} />
             </label>
-            <button type="submit" className="btn btn-primary" disabled={area.trim().length !== 4 || lote.trim().length !== 10 || !selectedUser}>
+            <button type="submit" className="btn btn-primary">
               <Check size={18} /> Salvar
             </button>
+            {saveErrors.length > 0 && (
+              <div className="save-feedback error" role="alert">
+                <strong>Antes de salvar:</strong>
+                <ul>{saveErrors.map((message) => <li key={message}>{message}</li>)}</ul>
+              </div>
+            )}
           </form>
-        )}      </div>
+        )}
+        {saveConfirmation && <div className="save-feedback success" role="status"><Check size={18} /> {saveConfirmation}</div>}
+      </div>
 
       {syncError && <div className="export-note error">{syncError}</div>}
 
