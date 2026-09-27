@@ -89,6 +89,19 @@ async function fetchOnlineItems(): Promise<InventoryItem[]> {
   })
 }
 
+async function deleteOnlineItems(onlineSequence?: number) {
+  const filter = onlineSequence === undefined ? 'sequencial=not.is.null' : `sequencial=eq.${onlineSequence}`
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/leinventario_registros?${filter}`, {
+    method: 'DELETE',
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      Prefer: 'return=minimal',
+    },
+  })
+  if (!response.ok) throw new Error(await response.text())
+}
+
 function playBeep() {
   try {
     const audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
@@ -118,6 +131,8 @@ function App() {
   const [exporting, setExporting] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null)
+  const [clearingAll, setClearingAll] = useState(false)
   const [baseOnline, setBaseOnline] = useState<boolean | null>(null)
   const [saveErrors, setSaveErrors] = useState<string[]>([])
   const [saveConfirmation, setSaveConfirmation] = useState<string | null>(null)
@@ -452,13 +467,53 @@ function App() {
     setManualCode('')
   }
 
-  const removeItem = (id: string) => {
-    setItems((prev) => prev.filter((item) => item.id !== id))
+  const removeItem = async (id: string) => {
+    const item = items.find((candidate) => candidate.id === id)
+    if (!item || deletingItemId || clearingAll) return
+
+    setDeletingItemId(id)
+    setSyncError(null)
+
+    try {
+      if (item.onlineSequence !== undefined) {
+        await deleteOnlineItems(item.onlineSequence)
+      }
+      setItems((prev) => prev.filter((candidate) => candidate.id !== id))
+    } catch (err) {
+      console.error('Falha ao excluir registro:', err)
+      setSyncError('Não foi possível apagar o registro da base online. Ele foi mantido para você tentar novamente.')
+      setBaseOnline(false)
+    } finally {
+      setDeletingItemId(null)
+    }
   }
 
   const clearAll = () => {
     setShowClearModal(true)
     setClearConfirmInput('')
+  }
+
+  const confirmClearAll = async () => {
+    if (clearConfirmInput.trim().toUpperCase() !== 'APAGAR' || clearingAll || deletingItemId) return
+
+    setClearingAll(true)
+    setSyncError(null)
+
+    try {
+      await deleteOnlineItems()
+      setItems([])
+      setLastScanned(null)
+      localStorage.removeItem('leinventario_items')
+      setShowClearModal(false)
+      setClearConfirmInput('')
+      setBaseOnline(true)
+    } catch (err) {
+      console.error('Falha ao apagar a planilha online:', err)
+      setSyncError('Não foi possível apagar a planilha da base online. Nenhum registro foi removido; tente novamente com internet.')
+      setBaseOnline(false)
+    } finally {
+      setClearingAll(false)
+    }
   }
 
   const exportXLSX = async () => {
@@ -818,8 +873,14 @@ function App() {
                     <td><span className="data-badge lot-badge">{item.lote || '-'}</span></td>
                     <td className="time-cell">{item.dateRead || item.timestamp}</td>
                     <td style={{ textAlign: 'center' }}>
-                      <button className="icon-btn danger" onClick={() => removeItem(item.id)} title="Excluir">
-                        <Trash2 size={16} />
+                      <button
+                        className="icon-btn danger"
+                        onClick={() => void removeItem(item.id)}
+                        title={deletingItemId === item.id ? 'Apagando...' : 'Excluir'}
+                        aria-label={deletingItemId === item.id ? 'Apagando registro' : 'Excluir registro'}
+                        disabled={deletingItemId !== null || clearingAll}
+                      >
+                        {deletingItemId === item.id ? <RotateCcw size={16} /> : <Trash2 size={16} />}
                       </button>
                     </td>
                   </tr>
@@ -937,18 +998,10 @@ function App() {
               <button
                 type="button"
                 className="btn btn-danger"
-                disabled={clearConfirmInput.trim().toUpperCase() !== 'APAGAR'}
-                onClick={() => {
-                  if (clearConfirmInput.trim().toUpperCase() === 'APAGAR') {
-                    setItems([])
-                    setLastScanned(null)
-                    localStorage.removeItem('leinventario_items')
-                    setShowClearModal(false)
-                    setClearConfirmInput('')
-                  }
-                }}
+                disabled={clearConfirmInput.trim().toUpperCase() !== 'APAGAR' || clearingAll || deletingItemId !== null}
+                onClick={() => void confirmClearAll()}
               >
-                Apagar Planilha
+                {clearingAll ? 'Apagando...' : 'Apagar Planilha'}
               </button>
             </div>
           </div>
