@@ -981,6 +981,44 @@
   color: var(--text);
 }
 
+.online-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.modal-warning,
+.modal-description {
+  margin: 0;
+}
+
+.modal-warning {
+  color: var(--text-h);
+  font-weight: 500;
+}
+
+.modal-description {
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+@media (max-width: 640px) {
+  .config-trigger-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .online-actions,
+  .online-actions .btn {
+    width: 100%;
+  }
+
+  .online-actions .btn {
+    justify-content: center;
+  }
+}
+
 .config-saved-toast {
   margin-bottom: 1rem;
   padding: 0.6rem 1rem;
