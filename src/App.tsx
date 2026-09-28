@@ -133,6 +133,7 @@ function App() {
   const [syncing, setSyncing] = useState(false)
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null)
   const [clearingAll, setClearingAll] = useState(false)
+  const [clearingOnline, setClearingOnline] = useState(false)
   const [baseOnline, setBaseOnline] = useState<boolean | null>(null)
   const [saveErrors, setSaveErrors] = useState<string[]>([])
   const [saveConfirmation, setSaveConfirmation] = useState<string | null>(null)
@@ -171,6 +172,8 @@ function App() {
   const [selectedUser, setSelectedUser] = useState(() => localStorage.getItem('leinventario_user') || '')
   const [showClearModal, setShowClearModal] = useState(false)
   const [clearConfirmInput, setClearConfirmInput] = useState('')
+  const [showOnlineClearModal, setShowOnlineClearModal] = useState(false)
+  const [onlineClearConfirmInput, setOnlineClearConfirmInput] = useState('')
 
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [isInstalled, setIsInstalled] = useState(false)
@@ -263,6 +266,7 @@ function App() {
   }, [])
 
   const forceSync = async () => {
+    if (clearingOnline || clearingAll || deletingItemId) return
     setSyncing(true)
     const pending = items.filter((item) => !item.onlineSequence)
     if (pending.length === 0) {
@@ -469,7 +473,7 @@ function App() {
 
   const removeItem = async (id: string) => {
     const item = items.find((candidate) => candidate.id === id)
-    if (!item || deletingItemId || clearingAll) return
+    if (!item || deletingItemId || clearingAll || clearingOnline) return
 
     setDeletingItemId(id)
     setSyncError(null)
@@ -494,25 +498,46 @@ function App() {
   }
 
   const confirmClearAll = async () => {
-    if (clearConfirmInput.trim().toUpperCase() !== 'APAGAR' || clearingAll || deletingItemId) return
+    if (clearConfirmInput.trim().toUpperCase() !== 'APAGAR' || clearingAll || deletingItemId || clearingOnline) return
 
     setClearingAll(true)
     setSyncError(null)
 
+    setItems([])
+    setLastScanned(null)
+    localStorage.removeItem('leinventario_items')
+    setShowClearModal(false)
+    setClearConfirmInput('')
+    setClearingAll(false)
+  }
+
+  const openOnlineClear = () => {
+    setShowOnlineClearModal(true)
+    setOnlineClearConfirmInput('')
+  }
+
+  const confirmClearOnline = async () => {
+    if (onlineClearConfirmInput.trim().toUpperCase() !== 'APAGAR' || clearingOnline || clearingAll || deletingItemId || syncing) return
+
+    setClearingOnline(true)
+    setSyncError(null)
+
     try {
       await deleteOnlineItems()
-      setItems([])
-      setLastScanned(null)
-      localStorage.removeItem('leinventario_items')
-      setShowClearModal(false)
-      setClearConfirmInput('')
+      const remainingOnlineItems = await fetchOnlineItems()
+      if (remainingOnlineItems.length > 0) {
+        throw new Error('A base online ainda contém registros após a exclusão.')
+      }
+      setItems((prev) => prev.filter((item) => item.onlineSequence === undefined))
+      setShowOnlineClearModal(false)
+      setOnlineClearConfirmInput('')
       setBaseOnline(true)
     } catch (err) {
-      console.error('Falha ao apagar a planilha online:', err)
-      setSyncError('Não foi possível apagar a planilha da base online. Nenhum registro foi removido; tente novamente com internet.')
+      console.error('Falha ao apagar a sincronização online:', err)
+      setSyncError('Não foi possível confirmar que a base online ficou vazia. Nenhum registro foi removido da tela; tente novamente com internet.')
       setBaseOnline(false)
     } finally {
-      setClearingAll(false)
+      setClearingOnline(false)
     }
   }
 
@@ -878,7 +903,7 @@ function App() {
                         onClick={() => void removeItem(item.id)}
                         title={deletingItemId === item.id ? 'Apagando...' : 'Excluir'}
                         aria-label={deletingItemId === item.id ? 'Apagando registro' : 'Excluir registro'}
-                        disabled={deletingItemId !== null || clearingAll}
+                        disabled={deletingItemId !== null || clearingAll || clearingOnline}
                       >
                         {deletingItemId === item.id ? <RotateCcw size={16} /> : <Trash2 size={16} />}
                       </button>
@@ -898,9 +923,14 @@ function App() {
             <p>Envia os pendentes e busca os registros feitos nos outros aparelhos.</p>
           </div>
         </div>
-        <button type="button" className="btn btn-primary" onClick={forceSync} disabled={syncing}>
+        <div className="online-actions">
+        <button type="button" className="btn btn-primary" onClick={forceSync} disabled={syncing || clearingOnline || clearingAll || deletingItemId !== null}>
           <RotateCcw size={18} /> {syncing ? 'Sincronizando...' : 'Sincronizar todos os aparelhos'}
         </button>
+        <button type="button" className="btn btn-danger" onClick={openOnlineClear} disabled={syncing || clearingOnline || clearingAll || deletingItemId !== null}>
+          <Trash2 size={18} /> {clearingOnline ? 'Apagando online...' : 'Apagar sincronização online'}
+        </button>
+        </div>
       </div>
 
       {/* Opção Instalar o App no final */}
@@ -971,7 +1001,7 @@ function App() {
               <Trash2 size={22} color="#dc2626" /> Apagar Planilha
             </h3>
             <p style={{ margin: 0, color: 'var(--text-h)', fontWeight: 500 }}>
-              Esta ação irá <strong>apagar permanentemente</strong> todos os itens registrados.
+              Esta ação irá apagar todos os itens salvos <strong>neste aparelho</strong>. A base online não será alterada.
             </p>
             <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text)' }}>
               Para confirmar e evitar perda acidental de dados, digite <strong>APAGAR</strong> no campo abaixo:
@@ -998,10 +1028,55 @@ function App() {
               <button
                 type="button"
                 className="btn btn-danger"
-                disabled={clearConfirmInput.trim().toUpperCase() !== 'APAGAR' || clearingAll || deletingItemId !== null}
+                disabled={clearConfirmInput.trim().toUpperCase() !== 'APAGAR' || clearingAll || deletingItemId !== null || clearingOnline}
                 onClick={() => void confirmClearAll()}
               >
                 {clearingAll ? 'Apagando...' : 'Apagar Planilha'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showOnlineClearModal && (
+        <div className="modal-overlay">
+          <div className="modal-card">
+            <h3>
+              <Trash2 size={22} /> Apagar sincronização online
+            </h3>
+            <p className="modal-warning">
+              Esta ação apaga permanentemente todos os registros online para <strong>todos os aparelhos</strong>.
+            </p>
+            <p className="modal-description">
+              As leituras que ainda não foram enviadas continuarão salvas neste aparelho. Digite <strong>APAGAR</strong> para confirmar:
+            </p>
+            <input
+              type="text"
+              className="modal-input"
+              placeholder="Digite APAGAR"
+              value={onlineClearConfirmInput}
+              onChange={(e) => setOnlineClearConfirmInput(e.target.value)}
+              autoFocus
+            />
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn"
+                disabled={clearingOnline}
+                onClick={() => {
+                  setShowOnlineClearModal(false)
+                  setOnlineClearConfirmInput('')
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                disabled={onlineClearConfirmInput.trim().toUpperCase() !== 'APAGAR' || clearingOnline || clearingAll || deletingItemId !== null || syncing}
+                onClick={() => void confirmClearOnline()}
+              >
+                {clearingOnline ? 'Apagando online...' : 'Apagar sincronização online'}
               </button>
             </div>
           </div>
