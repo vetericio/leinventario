@@ -96,10 +96,11 @@ async function deleteOnlineItems(onlineSequence?: number) {
     headers: {
       apikey: SUPABASE_KEY,
       Authorization: `Bearer ${SUPABASE_KEY}`,
-      Prefer: 'return=minimal',
+      Prefer: 'return=representation',
     },
   })
   if (!response.ok) throw new Error(await response.text())
+  return await response.json() as Array<{ sequencial: number }>
 }
 
 function playBeep() {
@@ -134,6 +135,7 @@ function App() {
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null)
   const [clearingAll, setClearingAll] = useState(false)
   const [clearingOnline, setClearingOnline] = useState(false)
+  const [onlineClearError, setOnlineClearError] = useState<string | null>(null)
   const [baseOnline, setBaseOnline] = useState<boolean | null>(null)
   const [saveErrors, setSaveErrors] = useState<string[]>([])
   const [saveConfirmation, setSaveConfirmation] = useState<string | null>(null)
@@ -514,6 +516,7 @@ function App() {
   const openOnlineClear = () => {
     setShowOnlineClearModal(true)
     setOnlineClearConfirmInput('')
+    setOnlineClearError(null)
   }
 
   const confirmClearOnline = async () => {
@@ -521,12 +524,18 @@ function App() {
 
     setClearingOnline(true)
     setSyncError(null)
+    setOnlineClearError(null)
 
     try {
-      await deleteOnlineItems()
+      if (!navigator.onLine) throw new Error('offline')
+      const onlineItemsBeforeDelete = await fetchOnlineItems()
+      const deletedItems = onlineItemsBeforeDelete.length > 0 ? await deleteOnlineItems() : []
       const remainingOnlineItems = await fetchOnlineItems()
       if (remainingOnlineItems.length > 0) {
-        throw new Error('A base online ainda contém registros após a exclusão.')
+        throw new Error(`A base recusou a exclusão. Ainda existem ${remainingOnlineItems.length} registro(s) online.`)
+      }
+      if (onlineItemsBeforeDelete.length > 0 && deletedItems.length === 0) {
+        throw new Error('A base não confirmou a exclusão dos registros.')
       }
       setItems((prev) => prev.filter((item) => item.onlineSequence === undefined))
       setShowOnlineClearModal(false)
@@ -534,7 +543,10 @@ function App() {
       setBaseOnline(true)
     } catch (err) {
       console.error('Falha ao apagar a sincronização online:', err)
-      setSyncError('Não foi possível confirmar que a base online ficou vazia. Nenhum registro foi removido da tela; tente novamente com internet.')
+      const detail = err instanceof Error && err.message && err.message !== 'offline'
+        ? err.message
+        : 'Verifique a internet e tente novamente.'
+      setOnlineClearError(`Não foi possível apagar os registros online. ${detail}`)
       setBaseOnline(false)
     } finally {
       setClearingOnline(false)
@@ -1014,6 +1026,17 @@ function App() {
               onChange={(e) => setClearConfirmInput(e.target.value)}
               autoFocus
             />
+            {clearingOnline && (
+              <div className="save-feedback success" role="status">
+                <RotateCcw size={18} /> Apagando e conferindo a base online...
+              </div>
+            )}
+            {onlineClearError && (
+              <div className="save-feedback error" role="alert">
+                <strong>{onlineClearError}</strong>
+                <p>Tente novamente. Nenhum registro foi removido deste aparelho.</p>
+              </div>
+            )}
             <div className="modal-actions">
               <button
                 type="button"
@@ -1066,6 +1089,7 @@ function App() {
                 onClick={() => {
                   setShowOnlineClearModal(false)
                   setOnlineClearConfirmInput('')
+                  setOnlineClearError(null)
                 }}
               >
                 Cancelar
